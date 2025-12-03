@@ -86,8 +86,22 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // provide a catch-all that ignores `/api` routes.
 
 
-// Middleware to authenticate token
+// Middleware to authenticate token (simple version)
 const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.sendStatus(401);
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+};
+
+// Middleware to authenticate token with disabled user check
+const authenticateTokenWithDisabledCheck = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -109,7 +123,7 @@ const authenticateToken = (req, res, next) => {
             req.user = { id: dbUser.id, email: dbUser.email, role: dbUser.role };
             next();
         } catch (e) {
-            console.error('Error checking user status in authenticateToken:', e);
+            console.error('Error checking user status in authenticateTokenWithDisabledCheck:', e);
             return res.sendStatus(500);
         }
     });
@@ -117,7 +131,7 @@ const authenticateToken = (req, res, next) => {
 
 // Routes
 const n8nRoutes = require('./routes/n8n');
-app.use('/api/n8n', authenticateToken, n8nRoutes);
+app.use('/api/n8n', authenticateTokenWithDisabledCheck, n8nRoutes);
 
 // Login Route
 app.post('/api/auth/login', async (req, res) => {
@@ -209,7 +223,7 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 // Dashboard Data Route
-app.get('/api/dashboard', authenticateToken, async (req, res) => {
+app.get('/api/dashboard', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const services = await prisma.serviceStatus.findMany({
             where: { userId: req.user.id },
@@ -773,7 +787,7 @@ app.post('/api/reschedule', async (req, res) => {
 });
 
 // Get all appointments (for admin)
-app.get('/api/appointments', authenticateToken, async (req, res) => {
+app.get('/api/appointments', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const appointments = await prisma.appointment.findMany({
             orderBy: { createdAt: 'desc' }
@@ -786,7 +800,7 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
 });
 
 // Admin endpoints to get/update AI system prompt (using database)
-app.get('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
+app.get('/api/admin/ai-prompt', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         let config = await prisma.config.findUnique({
             where: { key: 'ai_prompt' }
@@ -836,7 +850,7 @@ AGENDAMIENTO (PRIORIDAD MÁXIMA):
     }
 });
 
-app.post('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
+app.post('/api/admin/ai-prompt', authenticateTokenWithDisabledCheck, async (req, res) => {
     const { system } = req.body || {};
     if (typeof system !== 'string') return res.status(400).json({ error: 'Invalid payload' });
 
@@ -857,7 +871,7 @@ app.post('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
 });
 
 // Admin endpoints for user management (admin only)
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
+app.get('/api/admin/users', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
         if (currentUser?.role !== 'admin') {
@@ -874,7 +888,7 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
     }
 });
 
-app.put('/api/admin/user/:id', authenticateToken, async (req, res) => {
+app.put('/api/admin/user/:id', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
         if (currentUser?.role !== 'admin') {
@@ -907,7 +921,7 @@ app.put('/api/admin/user/:id', authenticateToken, async (req, res) => {
 });
 
 // Admin endpoint: enable/disable a user
-app.patch('/api/admin/user/:id/disable', authenticateToken, async (req, res) => {
+app.patch('/api/admin/user/:id/disable', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
         if (currentUser?.role !== 'admin') {
@@ -931,7 +945,7 @@ app.patch('/api/admin/user/:id/disable', authenticateToken, async (req, res) => 
 });
 
 // Admin endpoint: delete a user (requires explicit confirmation to prevent accidents)
-app.delete('/api/admin/user/:id', authenticateToken, async (req, res) => {
+app.delete('/api/admin/user/:id', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
         if (currentUser?.role !== 'admin') {
@@ -969,7 +983,7 @@ app.delete('/api/admin/user/:id', authenticateToken, async (req, res) => {
 });
 
 // User profile endpoints (any authenticated user)
-app.get('/api/profile', authenticateToken, async (req, res) => {
+app.get('/api/profile', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ 
             where: { id: req.user.id },
@@ -981,7 +995,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     }
 });
 
-app.put('/api/profile', authenticateToken, async (req, res) => {
+app.put('/api/profile', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const { email, password, name, company } = req.body;
         const updateData = {};
@@ -1005,7 +1019,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
 });
 
 // Ticket system endpoints
-app.get('/api/tickets', authenticateToken, async (req, res) => {
+app.get('/api/tickets', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
         let tickets;
@@ -1031,7 +1045,7 @@ app.get('/api/tickets', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/tickets', authenticateToken, async (req, res) => {
+app.post('/api/tickets', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const { subject, message, priority } = req.body;
         
@@ -1051,7 +1065,7 @@ app.post('/api/tickets', authenticateToken, async (req, res) => {
     }
 });
 
-app.put('/api/tickets/:id', authenticateToken, async (req, res) => {
+app.put('/api/tickets/:id', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
         const { status, response } = req.body;
@@ -1088,7 +1102,7 @@ app.put('/api/tickets/:id', authenticateToken, async (req, res) => {
 });
 
 // Update appointment (for admin) - can update status or googleEventId
-app.patch('/api/appointments/:id', authenticateToken, async (req, res) => {
+app.patch('/api/appointments/:id', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const { id } = req.params;
         const { status, googleEventId } = req.body;
@@ -1109,7 +1123,7 @@ app.patch('/api/appointments/:id', authenticateToken, async (req, res) => {
 });
 
 // Cancel/Delete appointment (for admin)
-app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
+app.delete('/api/appointments/:id', authenticateTokenWithDisabledCheck, async (req, res) => {
     try {
         const { id } = req.params;
         // Soporta borrado físico con ?hard=true
