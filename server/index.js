@@ -140,19 +140,32 @@ app.use('/api/webhooks/payments', paymentsRoutes);
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
+    console.log(`[LOGIN] Intento de login: ${email}`);
+
     try {
         const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) return res.status(400).json({ error: 'User not found' });
+        if (!user) {
+            console.log(`[LOGIN] Usuario no encontrado: ${email}`);
+            return res.status(400).json({ error: 'User not found' });
+        }
 
         // Block disabled users
-        if (user.disabled) return res.status(403).json({ error: 'Usuario deshabilitado' });
+        if (user.disabled) {
+            console.log(`[LOGIN] Usuario deshabilitado: ${email}`);
+            return res.status(403).json({ error: 'Usuario deshabilitado' });
+        }
 
         const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
+        if (!validPassword) {
+            console.log(`[LOGIN] Password inválida para: ${email}`);
+            return res.status(400).json({ error: 'Invalid password' });
+        }
 
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '1h' });
+        console.log(`[LOGIN] Login exitoso: ${email} (${user.role})`);
         res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, company: user.company } });
     } catch (error) {
+        console.error('[LOGIN] Error durante login:', error);
         res.status(500).json({ error: 'Login failed' });
     }
 });

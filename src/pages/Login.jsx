@@ -22,27 +22,40 @@ const Login = () => {
         setError('');
         setLoading(true);
 
+        console.log('🔐 Intentando login...', { email, API_URL });
+
         try {
-            const response = await fetch(`${API_URL}/api/auth/login`, {
+            const url = `${API_URL}/api/auth/login`;
+            console.log('📡 Llamando a:', url);
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
             });
 
+            console.log('📬 Response status:', response.status);
+
             const data = await response.json();
+            console.log('📦 Response data:', data);
 
             if (!response.ok) {
                 // Show specific message for disabled users
-                setError(data.error || 'Error al iniciar sesión');
+                const errorMsg = data.error || 'Error al iniciar sesión';
+                console.error('❌ Login error:', errorMsg);
+                setError(errorMsg);
                 setLoading(false);
                 return;
             }
 
+            console.log('✅ Login exitoso, guardando token...');
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
+            console.log('✅ Redirigiendo a dashboard...');
             navigate('/dashboard');
         } catch (err) {
-            setError(err.message);
+            console.error('❌ Exception durante login:', err);
+            setError(`Error de conexión: ${err.message}`);
         } finally {
             setLoading(false);
         }
