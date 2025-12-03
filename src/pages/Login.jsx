@@ -32,7 +32,10 @@ const Login = () => {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || 'Login failed');
+                // Show specific message for disabled users
+                setError(data.error || 'Error al iniciar sesión');
+                setLoading(false);
+                return;
             }
 
             localStorage.setItem('token', data.token);
@@ -59,7 +62,9 @@ const Login = () => {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || 'Google login failed');
+                setError(data.error || 'Error al iniciar sesión con Google');
+                setLoading(false);
+                return;
             }
 
             localStorage.setItem('token', data.token);

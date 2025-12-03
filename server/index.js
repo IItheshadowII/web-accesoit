@@ -93,10 +93,25 @@ const authenticateToken = (req, res, next) => {
 
     if (!token) return res.sendStatus(401);
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
+    jwt.verify(token, JWT_SECRET, async (err, payload) => {
         if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
+
+        try {
+            // Verify user still exists and is not disabled
+            const dbUser = await prisma.user.findUnique({ where: { id: payload.id } });
+            if (!dbUser) return res.sendStatus(401);
+            if (dbUser.disabled) {
+                console.warn('Authentication attempt for disabled user', dbUser.email);
+                return res.status(403).json({ error: 'Usuario deshabilitado' });
+            }
+
+            // Attach minimal user data to the request
+            req.user = { id: dbUser.id, email: dbUser.email, role: dbUser.role };
+            next();
+        } catch (e) {
+            console.error('Error checking user status in authenticateToken:', e);
+            return res.sendStatus(500);
+        }
     });
 };
 
@@ -111,6 +126,9 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) return res.status(400).json({ error: 'User not found' });
+
+        // Block disabled users
+        if (user.disabled) return res.status(403).json({ error: 'Usuario deshabilitado' });
 
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
@@ -159,6 +177,12 @@ app.post('/api/auth/google', async (req, res) => {
                     company: null
                 }
             });
+        }
+
+        // Block disabled users
+        if (user.disabled) {
+            console.warn('Google login attempt for disabled user', user.email);
+            return res.status(403).json({ error: 'Usuario deshabilitado' });
         }
 
         // Generate JWT token
