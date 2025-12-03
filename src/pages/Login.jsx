@@ -13,7 +13,9 @@ const Login = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+    // Use relative URL in production so requests go to the same origin (e.g. /api/auth/login)
+    // In development set VITE_API_URL to 'http://localhost:3002'
+    const API_URL = import.meta.env.VITE_API_URL || '';
 
     const handleSubmit = async (e) => {
         e.preventDefault();
