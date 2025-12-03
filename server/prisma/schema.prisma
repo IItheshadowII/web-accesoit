@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String?
+  company   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  services      ServiceStatus[]
+  subscriptions Subscription[]
+  n8nInstances  N8nInstance[]
+}
+
+model ServiceStatus {
+  id          Int      @id @default(autoincrement())
+  name        String
+  status      String   // "Active", "Pending", "Issue"
+  description String?
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  updatedAt   DateTime @updatedAt
+}
+
+model Appointment {
+  id             Int      @id @default(autoincrement())
+  name           String
+  email          String
+  phone          String?
+  sessionId      String?  // Identificador de la sesión de chat para relacionar conversaciones
+  date           String
+  time           String
+  service        String
+  message        String?
+  status         String   @default("pending") // pending, confirmed, cancelled
+  googleEventId  String?  // ID del evento en Google Calendar
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Subscription {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  user               User     @relation(fields: [userId], references: [id])
+  provider           String   // 'stripe', 'mercadopago', etc.
+  providerCustomerId String
+  providerSubId      String
+  status             String   // 'active', 'past_due', 'canceled'
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model N8nInstance {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id])
+  slug           String   @unique   // ej. 'cli-123'
+  url            String
+  host           String   // ej. 'n8n-host-01'
+  basicAuthUser  String
+  basicAuthPass  String
+  encryptionKey  String   // CRÍTICO: Para persistir credenciales entre reinicios
+  status         String   // 'provisioning','active','suspended','deleted'
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

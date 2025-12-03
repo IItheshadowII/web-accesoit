@@ -1,0 +1,16 @@
+
+=== PRUEBA: Agendar en horario DISPONIBLE (10:00) ===
+
+📝 RESPUESTA DE LA IA:
+------------------------------------------------------------
+¡Perfecto! He agendado tu cita para el 2025-12-05 a las 10:00. Te enviaremos una confirmación a sofia@test.com. ¿Hay algo más en lo que pueda ayudarte?
+------------------------------------------------------------
+
+📊 ANÁLISIS:
+✅ ÉXITO: La cita fue agendada correctamente
+   ID: 12
+   Fecha: 2025-12-05
+   Hora: 10:00
+   Cliente: Sofia Ruiz
+
+🎉 El sistema permite agendar en horarios libres!

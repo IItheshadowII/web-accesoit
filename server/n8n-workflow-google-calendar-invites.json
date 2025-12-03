@@ -1,0 +1,95 @@
+{
+    "name": "API Crear Cita con Invitados (Google Calendar)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "create-appointment",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                460,
+                460
+            ],
+            "webhookId": "create-appointment-webhook"
+        },
+        {
+            "parameters": {
+                "calendar": {
+                    "__rl": true,
+                    "value": "primary",
+                    "mode": "list",
+                    "cachedResultName": "primary"
+                },
+                "start": "={{ $json.body.fecha }}T{{ $json.body.hora }}:00",
+                "end": "={{ $json.body.fecha }}T{{ $json.body.hora.split(':')[0] * 1 + 1 }}:{{ $json.body.hora.split(':')[1] }}:00",
+                "summary": "={{ $json.body.service }} - {{ $json.body.nombre }}",
+                "description": "=Cliente: {{ $json.body.nombre }}\nTeléfono: {{ $json.body.phone }}\nEmail: {{ $json.body.email }}\n\nNota: {{ $json.body.message }}",
+                "location": "Llamada / Reunión Virtual",
+                "attendees": "={{ $json.body.email ? $json.body.email + ',' : '' }}contacto@accesoit.com.ar",
+                "options": {
+                    "reminders": {
+                        "useDefault": false,
+                        "overrides": [
+                            {
+                                "method": "popup",
+                                "minutes": 15
+                            },
+                            {
+                                "method": "email",
+                                "minutes": 60
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "google-calendar-node",
+            "name": "Google Calendar",
+            "type": "n8n-nodes-base.googleCalendar",
+            "typeVersion": 1,
+            "position": [
+                680,
+                460
+            ],
+            "credentials": {
+                "googleCalendarOAuth2Api": {
+                    "id": "",
+                    "name": "Google Calendar account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "content": "## 📧 Cita con Invitaciones\nEste workflow agrega como asistentes a:\n1. El cliente (si tiene email)\n2. `contacto@accesoit.com.ar`\n\nEsto hará que Google les envíe la invitación automáticamente.",
+                "height": 240,
+                "width": 320
+            },
+            "id": "note-node",
+            "name": "Nota",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                460,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Google Calendar",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -1,0 +1,104 @@
+{
+    "name": "API Verificar Disponibilidad (Google Calendar)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "check-availability",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                460,
+                460
+            ],
+            "webhookId": "check-availability-webhook"
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "calendar": {
+                    "__rl": true,
+                    "value": "primary",
+                    "mode": "list",
+                    "cachedResultName": "primary"
+                },
+                "options": {
+                    "timeMin": "={{ $json.body.date }}T{{ $json.body.time }}:00-03:00",
+                    "timeMax": "={{ $json.body.date }}T{{ $json.body.endTime }}:00-03:00",
+                    "singleEvents": true
+                }
+            },
+            "id": "google-calendar-node",
+            "name": "Google Calendar",
+            "type": "n8n-nodes-base.googleCalendar",
+            "typeVersion": 1,
+            "position": [
+                680,
+                460
+            ],
+            "credentials": {
+                "googleCalendarOAuth2Api": {
+                    "id": "",
+                    "name": "Google Calendar account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Verificar si se encontraron eventos\nconst events = items.map(item => item.json);\nconst isBusy = events.length > 0;\n\nreturn {\n  json: {\n    busy: isBusy,\n    events: events.length\n  }\n};"
+            },
+            "id": "check-busy-node",
+            "name": "Verificar Ocupado",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                460
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## 📅 Verificar Disponibilidad\nRecibe `date`, `time` y `endTime`.\nConsulta Google Calendar en ese rango.\nDevuelve `{ busy: true/false }`.",
+                "height": 220,
+                "width": 340
+            },
+            "id": "note-node",
+            "name": "Nota",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                400,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Google Calendar",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Calendar": {
+            "main": [
+                [
+                    {
+                        "node": "Verificar Ocupado",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

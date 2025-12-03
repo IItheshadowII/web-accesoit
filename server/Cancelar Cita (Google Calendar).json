@@ -1,0 +1,132 @@
+{
+  "name": "Cancelar Cita (Google Calendar)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cancelar-visita",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c1073c29-afd1-4b6d-bf68-7159cc363419",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-240, 128],
+      "webhookId": "cancel-appointment-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "options": {
+          "timeMin": "={{ $json.body.fecha }}T00:00:00-03:00",
+          "timeMax": "={{ $json.body.fecha }}T23:59:59-03:00",
+          "singleEvents": true
+        }
+      },
+      "id": "buscar-evento-node",
+      "name": "Buscar Evento por Fecha",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [-32, 128],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "G2oRMIUZGaJRUF7B",
+          "name": "Google Calendar -AccesoIT"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const appointmentId = $('Webhook').item.json.body.appointmentId;\nconst googleEventId = $('Webhook').item.json.body.googleEventId;\nconst nombre = $('Webhook').item.json.body.nombre;\nconst email = $('Webhook').item.json.body.email;\nconst hora = $('Webhook').item.json.body.hora;\n\nconst events = items.map(item => item.json);\n\n// Paso 1: Buscar por googleEventId exacto\nlet targetEvent = events.find(e => \n  e.id === googleEventId || \n  e.iCalUID === googleEventId || \n  e.iCalUID === `${googleEventId}@google.com`\n);\n\n// Paso 2: Si no lo encuentra por ID, buscar por appointmentId + validaciones adicionales\nif (!targetEvent && appointmentId) {\n  const candidates = events.filter(e => \n    e.description && e.description.includes(`ID Turno: ${appointmentId}`)\n  );\n  \n  // Si hay múltiples candidatos, validar con nombre, email u hora\n  if (candidates.length === 1) {\n    targetEvent = candidates[0];\n  } else if (candidates.length > 1) {\n    // Filtrar por nombre en summary\n    targetEvent = candidates.find(e => \n      (nombre && e.summary && e.summary.includes(nombre)) ||\n      (email && e.description && e.description.includes(email)) ||\n      (hora && e.start && e.start.dateTime && e.start.dateTime.includes(hora))\n    );\n    \n    // Si aún no encuentra, tomar el primero (último recurso)\n    if (!targetEvent) {\n      targetEvent = candidates[0];\n    }\n  }\n}\n\nif (targetEvent) {\n  return [{ json: { \n    eventId: targetEvent.id, \n    found: true,\n    summary: targetEvent.summary,\n    start: targetEvent.start ? targetEvent.start.dateTime : null\n  } }];\n} else {\n  return [{ json: { \n    eventId: null, \n    found: false, \n    error: 'Evento no encontrado en el calendario',\n    searchedId: googleEventId,\n    searchedAppointmentId: appointmentId\n  } }];\n}"
+      },
+      "id": "filtrar-evento-node",
+      "name": "Filtrar Evento Correcto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [176, 128]
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "eventId": "={{ $json.eventId }}",
+        "options": {}
+      },
+      "id": "52197213-c910-444a-80d5-9db4b42079ae",
+      "name": "Eliminar Evento",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [384, 128],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "G2oRMIUZGaJRUF7B",
+          "name": "Google Calendar -AccesoIT"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": $('Filtrar Evento Correcto').item.json.found !== false, \"message\": $('Filtrar Evento Correcto').item.json.found === false ? 'Evento no encontrado en el calendario' : 'Evento eliminado de Google Calendar', \"googleEventId\": $('Webhook').item.json.body.googleEventId, \"appointmentId\": $('Webhook').item.json.body.appointmentId, \"summary\": $('Filtrar Evento Correcto').item.json.summary || null, \"start\": $('Filtrar Evento Correcto').item.json.start || null, \"eventIdDeleted\": $('Filtrar Evento Correcto').item.json.eventId || null } }}",
+        "options": {}
+      },
+      "id": "respond-webhook-node",
+      "name": "Responder al Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [592, 128]
+    },
+    {
+      "parameters": {
+        "content": "## 🗑️ Cancelación de Citas\nBusca el evento por fecha y lo filtra por ID o appointmentId en descripción.\n\n**Input esperado:**\n```json\n{\n  \"googleEventId\": \"...\",\n  \"appointmentId\": 123,\n  \"fecha\": \"2025-12-03\"\n}\n```",
+        "height": 260,
+        "width": 340
+      },
+      "id": "6c6ef750-b357-4163-ba41-aa78113b7835",
+      "name": "Nota Explicativa",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-304, -176]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Buscar Evento por Fecha", "type": "main", "index": 0}]]
+    },
+    "Buscar Evento por Fecha": {
+      "main": [[{"node": "Filtrar Evento Correcto", "type": "main", "index": 0}]]
+    },
+    "Filtrar Evento Correcto": {
+      "main": [[{"node": "Eliminar Evento", "type": "main", "index": 0}]]
+    },
+    "Eliminar Evento": {
+      "main": [[{"node": "Responder al Webhook", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "26561bb9-e13f-4cf9-ac7f-3b273fe3b28b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d15968221c676dd755827b8ac7745301a146c33bf2b047a9c11b658738cad2ec"
+  },
+  "id": "y0TWjSQUG303tSrJ",
+  "tags": []
+}

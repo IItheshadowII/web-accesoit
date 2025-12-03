@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  web-accesoit:
+    build: .
+    container_name: web-accesoit
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - DATABASE_URL=file:./dev.db
+    env_file:
+      - ./server/.env
+    volumes:
+      - ./server/prisma:/app/server/prisma
+      - web-data:/app/server/prisma
+    networks:
+      - web-network
+
+networks:
+  web-network:
+    external: true
+    name: easypanel
+
+volumes:
+  web-data:

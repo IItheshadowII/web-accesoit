@@ -1,0 +1,175 @@
+{
+  "name": "Agendar Visita - Google Calendar",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agendar-visita",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "41c7bac4-f073-4bbe-9e33-f55a014fe65c",
+      "name": "Webhook - Recibir Cita",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        32
+      ],
+      "webhookId": "9dbab980-3a93-4f09-89e4-5d5b67f69b98"
+    },
+    {
+      "parameters": {
+        "calendar": "primary",
+        "start": "={{ $json.body.fecha }}T{{ $json.body.hora }}:00",
+        "end": "={{ $json.body.fecha }}T{{ DateTime.fromFormat($json.body.hora, 'HH:mm').plus({ hours: 1 }).toFormat('HH:mm') }}:00",
+        "additionalFields": {
+          "attendees": "={{ $json.body.email ? [$json.body.email] : [] }}",
+          "description": "=Nombre: {{ $json.body.nombre }} Teléfono: {{ $json.body.phone }} Email: {{ $json.body.email }} Servicio: {{ $json.body.service }} Mensaje: {{ $json.body.message }} ID Turno: {{ $json.body.appointmentId }}",
+          "summary": "={{ $json.body.service }} - {{ $json.body.nombre }}"
+        }
+      },
+      "id": "c0148c3b-1e14-4b98-a2b8-cba7b5b1f761",
+      "name": "Crear Evento en Google Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        32
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "G2oRMIUZGaJRUF7B",
+          "name": "Google Calendar -AccesoIT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+            "string": [
+            {
+              "value1": "={{ $('Webhook - Recibir Cita').item.json.body.email }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "15fe7936-20e2-4d7c-8686-4d869a91e29b",
+      "name": "¿Tiene Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Cita agendada en Google Calendar\", \"eventId\": $('Crear Evento en Google Calendar').item.json.id, \"id\": $('Crear Evento en Google Calendar').item.json.id, \"appointmentId\": $('Webhook - Recibir Cita').item.json.body.appointmentId } }}",
+        "options": {}
+      },
+      "id": "809bb405-35e6-47ce-a830-016517ffb323",
+      "name": "Responder al Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        320,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook - Recibir Cita').item.json.body.email }}",
+        "subject": "=Confirmación de Cita - {{ $('Webhook - Recibir Cita').item.json.body.service }}",
+        "emailType": "HTML",
+        "html": "=<div style=\"font-family:Inter, Arial, sans-serif; color:#111827; line-height:1.4;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;margin:0 auto;border-collapse:collapse;\">\n    <tr><td style=\"padding:24px 0;text-align:center;\"><h2 style=\"margin:0;color:#0f172a;\">Confirmación de Cita</h2></td></tr>\n    <tr><td style=\"background:#ffffff;padding:20px;border-radius:8px;box-shadow:0 1px 3px rgba(16,24,40,0.05);\">\n      <p style=\"margin:0 0 12px 0;color:#374151;\">Hola {{ $('Webhook - Recibir Cita').item.json.body.nombre || 'Cliente' }},</p>\n      <p style=\"margin:0 0 16px 0;color:#374151;\">Hemos agendado tu llamada para discutir <strong>{{ $('Webhook - Recibir Cita').item.json.body.service }}</strong>.</p>\n      <table width=\"100%\" style=\"border-collapse:collapse;margin-bottom:16px;\">\n        <tr>\n          <td style=\"padding:8px 0;color:#6b7280;width:35%;\">Fecha</td>\n          <td style=\"padding:8px 0;color:#111827;\">{{ $('Webhook - Recibir Cita').item.json.body.fecha }}</td>\n        </tr>\n        <tr>\n          <td style=\"padding:8px 0;color:#6b7280;\">Hora</td>\n          <td style=\"padding:8px 0;color:#111827;\">{{ $('Webhook - Recibir Cita').item.json.body.hora }}</td>\n        </tr>\n        <tr>\n          <td style=\"padding:8px 0;color:#6b7280;\">Teléfono</td>\n          <td style=\"padding:8px 0;color:#111827;\">{{ $('Webhook - Recibir Cita').item.json.body.phone || 'No informado' }}</td>\n        </tr>\n      </table>\n      <p style=\"margin:0 0 8px 0;color:#374151;\">Si necesitás modificar la fecha u horario, respondé a este correo o escribinos a <a href=\"mailto:contacto@accesoit.com.ar\">contacto@accesoit.com.ar</a>.</p>\n      <p style=\"margin:16px 0 0 0;color:#6b7280;font-size:13px;\">Saludos,<br/>Equipo AccesoIT</p>\n    </td></tr>\n    <tr><td style=\"padding:12px 0;text-align:center;color:#9ca3af;font-size:12px;\">Este correo fue enviado automáticamente por n8n.</td></tr>\n  </table>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        96,
+        -80
+      ],
+      "id": "f288110b-aef5-4355-b66e-97a7647b086c",
+      "name": "Send a message",
+      "webhookId": "deb89258-2bc5-42db-ae0e-ec602a18f573",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "WzeXwq14M7l3BL1I",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Recibir Cita": {
+      "main": [
+        [
+          {
+            "node": "Crear Evento en Google Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Evento en Google Calendar": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene Email?": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder al Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Responder al Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "88ec9205-4e6e-472f-9ddf-5416e8b40180",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d15968221c676dd755827b8ac7745301a146c33bf2b047a9c11b658738cad2ec"
+  },
+  "id": "DjovpM8PP7Xr7cBf",
+  "tags": []
+}
