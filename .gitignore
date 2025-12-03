@@ -8,7 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# Allow committing built assets for deployment
+# Remove or adjust if you don't want dist in Git
+!dist/
 dist-ssr
 *.local
 
