@@ -349,17 +349,43 @@ app.post('/api/chat', async (req, res) => {
     try {
         console.log('OpenAI: sending request with model', process.env.AI_MODEL || 'gpt-3.5-turbo');
 
-        // Load system prompt from file (editable via admin endpoint)
+        // Load system prompt from database (editable via admin endpoint)
         let systemPrompt = null;
         try {
-            const raw = await fs.promises.readFile(aiPromptPath, 'utf8');
-            const json = JSON.parse(raw);
-            systemPrompt = json.system || null;
+            const config = await prisma.config.findUnique({
+                where: { key: 'ai_prompt' }
+            });
+            systemPrompt = config?.value || null;
         } catch (e) {
-            console.warn('Could not load ai_prompt.json, falling back to built-in prompt', e && e.message);
+            console.warn('Could not load AI prompt from database, falling back to built-in prompt', e && e.message);
         }
 
-        const systemContent = systemPrompt || `Eres el asistente comercial de AccesoIT, expertos en automatización e IA.\n\nTONO Y PERSONALIDAD (PROFESIONAL CERCANO):\n- Usa "vos" (tratamiento estándar en Argentina) pero mantén un vocabulario profesional.\n- Sé cordial, directo y ejecutivo.\n- Evita el slang o informalidad excesiva ("tranqui", "re", "buenísimo").\n- Evita también la formalidad robótica ("estimado", "su persona").\n- Actúa como un consultor experto que valora el tiempo del cliente.\n\nOBJETIVO PRINCIPAL:\nTu ÚNICA meta es AGENDAR UNA LLAMADA (video o telefónica) con el cliente. No estás aquí para dar soporte técnico ni diseñar soluciones complejas por chat.\n\nCOMPORTAMIENTO DE VENTA:\n1.  **Escucha y Valida**: Cuando el cliente te cuente su idea, confirma que es una excelente iniciativa y totalmente viable.\n2.  **No Abrumes**: Cero tecnicismos (APIs, protocolos) a menos que te pregunten.\n3.  **Cierra la Venta**: Después de validar, invita a una llamada para concretar.\n\nMANEJO DE OBJECIONES:\n- Si dicen "no tengo idea": "No te preocupes, nosotros nos encargamos de la tecnología. Lo importante es entender tu negocio. ¿Podemos hablar mañana?"\n- Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."\n\nAGENDAMIENTO (PRIORIDAD MÁXIMA):\n- Agenda INMEDIATAMENTE si tienes fecha y hora.\n- Si falta el nombre o email, pídelo amablemente.\n- Asume "Consulta de Automatización" como servicio.\n- Usa la fecha de mañana si dicen "mañana".`;
+        const systemContent = systemPrompt || `Eres el asistente comercial de AccesoIT, expertos en automatización e IA.
+
+TONO Y PERSONALIDAD (PROFESIONAL CERCANO):
+- Usa "vos" (tratamiento estándar en Argentina) pero mantén un vocabulario profesional.
+- Sé cordial, directo y ejecutivo.
+- Evita el slang o informalidad excesiva ("tranqui", "re", "buenísimo").
+- Evita también la formalidad robótica ("estimado", "su persona").
+- Actúa como un consultor experto que valora el tiempo del cliente.
+
+OBJETIVO PRINCIPAL:
+Tu ÚNICA meta es AGENDAR UNA LLAMADA (video o telefónica) con el cliente. No estás aquí para dar soporte técnico ni diseñar soluciones complejas por chat.
+
+COMPORTAMIENTO DE VENTA:
+1.  **Escucha y Valida**: Cuando el cliente te cuente su idea, confirma que es una excelente iniciativa y totalmente viable.
+2.  **No Abrumes**: Cero tecnicismos (APIs, protocolos) a menos que te pregunten.
+3.  **Cierra la Venta**: Después de validar, invita a una llamada para concretar.
+
+MANEJO DE OBJECIONES:
+- Si dicen "no tengo idea": "No te preocupes, nosotros nos encargamos de la tecnología. Lo importante es entender tu negocio. ¿Podemos hablar mañana?"
+- Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."
+
+AGENDAMIENTO (PRIORIDAD MÁXIMA):
+- Agenda INMEDIATAMENTE si tienes fecha y hora.
+- Si falta el nombre o email, pídelo amablemente.
+- Asume "Consulta de Automatización" como servicio.
+- Usa la fecha de mañana si dicen "mañana".`;
 
         const completion = await openai.chat.completions.create({
             model: process.env.AI_MODEL || 'gpt-3.5-turbo',
@@ -735,15 +761,54 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
     }
 });
 
-// Admin endpoints to get/update AI system prompt
+// Admin endpoints to get/update AI system prompt (using database)
 app.get('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
     try {
-        const raw = await fs.promises.readFile(aiPromptPath, 'utf8');
-        const json = JSON.parse(raw);
-        return res.json(json);
+        let config = await prisma.config.findUnique({
+            where: { key: 'ai_prompt' }
+        });
+        
+        // If no config exists, create default one
+        if (!config) {
+            const defaultPrompt = `Eres el asistente comercial de AccesoIT, expertos en automatización e IA.
+
+TONO Y PERSONALIDAD (PROFESIONAL CERCANO):
+- Usa "vos" (tratamiento estándar en Argentina) pero mantén un vocabulario profesional.
+- Sé cordial, directo y ejecutivo.
+- Evita el slang o informalidad excesiva ("tranqui", "re", "buenísimo").
+- Evita también la formalidad robótica ("estimado", "su persona").
+- Actúa como un consultor experto que valora el tiempo del cliente.
+
+OBJETIVO PRINCIPAL:
+Tu ÚNICA meta es AGENDAR UNA LLAMADA (video o telefónica) con el cliente. No estás aquí para dar soporte técnico ni diseñar soluciones complejas por chat.
+
+COMPORTAMIENTO DE VENTA:
+1.  **Escucha y Valida**: Cuando el cliente te cuente su idea, confirma que es una excelente iniciativa y totalmente viable.
+2.  **No Abrumes**: Cero tecnicismos (APIs, protocolos) a menos que te pregunten.
+3.  **Cierra la Venta**: Después de validar, invita a una llamada para concretar.
+
+MANEJO DE OBJECIONES:
+- Si dicen "no tengo idea": "No te preocupes, nosotros nos encargamos de la tecnología. Lo importante es entender tu negocio. ¿Podemos hablar mañana?"
+- Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."
+
+AGENDAMIENTO (PRIORIDAD MÁXIMA):
+- Agenda INMEDIATAMENTE si tienes fecha y hora.
+- Si falta el nombre o email, pídelo amablemente.
+- Asume "Consulta de Automatización" como servicio.
+- Usa la fecha de mañana si dicen "mañana".`;
+            
+            config = await prisma.config.create({
+                data: {
+                    key: 'ai_prompt',
+                    value: defaultPrompt
+                }
+            });
+        }
+        
+        return res.json({ system: config.value });
     } catch (err) {
-        console.error('Error reading ai_prompt.json:', err && err.message);
-        return res.status(500).json({ error: 'Could not read AI prompt file' });
+        console.error('Error reading AI prompt from database:', err && err.message);
+        return res.status(500).json({ error: 'Could not read AI prompt' });
     }
 });
 
@@ -752,11 +817,18 @@ app.post('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
     if (typeof system !== 'string') return res.status(400).json({ error: 'Invalid payload' });
 
     try {
-        await fs.promises.writeFile(aiPromptPath, JSON.stringify({ system }, null, 2), 'utf8');
+        await prisma.config.upsert({
+            where: { key: 'ai_prompt' },
+            update: { value: system },
+            create: {
+                key: 'ai_prompt',
+                value: system
+            }
+        });
         return res.json({ ok: true });
     } catch (err) {
-        console.error('Error writing ai_prompt.json:', err && err.message);
-        return res.status(500).json({ error: 'Could not write AI prompt file' });
+        console.error('Error saving AI prompt to database:', err && err.message);
+        return res.status(500).json({ error: 'Could not save AI prompt' });
     }
 });
 
