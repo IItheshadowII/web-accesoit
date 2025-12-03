@@ -32,10 +32,9 @@ const transporter = nodemailer.createTransport({
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from React build in production
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../dist')));
-}
+// NOTE: Static serving for the SPA is configured at the end of this file
+// (after all /api routes) so we serve files from `server/public` and
+// provide a catch-all that ignores `/api` routes.
 
 
 // Middleware to authenticate token
@@ -838,13 +837,22 @@ app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Catch-all route for React SPA (must be last)
-if (process.env.NODE_ENV === 'production') {
-    // Compatibilidad con path-to-regexp: usar una RegExp para el catch-all
-    app.get(/.*/, (req, res) => {
-        res.sendFile(path.join(__dirname, '../dist/index.html'));
-    });
-}
+// Serve static files from `server/public` and provide a SPA catch-all.
+// This must be placed AFTER all API routes so it doesn't intercept them.
+const publicPath = path.join(__dirname, 'public');
+
+// 1) Servir archivos estáticos generados por Vite (copiados a `server/public`)
+app.use(express.static(publicPath));
+
+// 2) Catch-all para la SPA: si la ruta comienza con '/api' dejamos pasar,
+//    en caso contrario devolvemos el `index.html` de la build.
+app.use((req, res, next) => {
+    if (req.path && req.path.startsWith('/api')) {
+        return next();
+    }
+
+    res.sendFile(path.join(publicPath, 'index.html'));
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
