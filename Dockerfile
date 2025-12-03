@@ -10,6 +10,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# Allow passing VITE_* variables at build time so Vite includes them in the bundle
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+
 # Copiamos config y entry de Vite
 COPY vite.config.* tsconfig.* ./
 COPY index.html ./
