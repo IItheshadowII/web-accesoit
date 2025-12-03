@@ -4,6 +4,7 @@ import Button from '../../components/UI/Button';
 import apiFetch from '../../lib/api';
 
 const AdminAiPrompt = () => {
+  // Force redeploy - dark textarea editor with restore button
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
