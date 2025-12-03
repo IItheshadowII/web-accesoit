@@ -325,6 +325,19 @@ async function doReschedule({ appointmentId, sessionId, email, oldDate, oldTime,
 app.post('/api/chat', async (req, res) => {
     const { message, history, sessionId } = req.body;
 
+    // Quick-response for short greetings to avoid long sales-first replies.
+    try {
+        const text = (message || '').toString().trim();
+        const isGreeting = /^((hola|buenas|buenos\s?d[ií]as|buenas\s?tardes|buenas\s?noches|hey|hi|hello)([.!?]*)?)$/i.test(text);
+        if (isGreeting) {
+            // Use a short, friendly greeting in voseo
+            return res.json({ reply: '¡Hola! ¿En qué puedo ayudarte hoy?' });
+        }
+    } catch (gErr) {
+        // If greeting detection fails, continue to normal flow
+        console.warn('Greeting detection error:', gErr && gErr.message);
+    }
+
     if (!AI_ENABLED) {
         console.error('AI API key not configured. Set AI_API_KEY in .env');
         return res.status(500).json({ error: 'AI_API_KEY not configured on server' });
