@@ -29,8 +29,55 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-app.use(cors());
-app.use(express.json());
+// CORS configuration for production
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or Postman)
+        if (!origin) return callback(null, true);
+        
+        // Allow localhost for development
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            return callback(null, true);
+        }
+        
+        // Allow accesoit.com.ar domain and subdomains
+        if (origin.includes('accesoit.com.ar')) {
+            return callback(null, true);
+        }
+        
+        // For production, log and allow (you can make this stricter later)
+        console.log('CORS: Allowing origin:', origin);
+        callback(null, true);
+    },
+    credentials: true,
+    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+app.use(cors(corsOptions));
+
+// Security headers middleware
+app.use((req, res, next) => {
+    // Allow external resources and fix CSP issues
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    
+    // More permissive CSP for production (you can tighten this later)
+    res.setHeader('Content-Security-Policy', 
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; " +
+        "connect-src 'self' https: wss: ws:; " +
+        "img-src 'self' data: https:; " +
+        "font-src 'self' data: https: fonts.gstatic.com; " +
+        "style-src 'self' 'unsafe-inline' https: fonts.googleapis.com;"
+    );
+    
+    next();
+});
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // NOTE: Static serving for the SPA is configured at the end of this file
 // (after all /api routes) so we serve files from `server/public` and
