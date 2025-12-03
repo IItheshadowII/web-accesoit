@@ -8,6 +8,8 @@ const UserManagement = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -102,15 +104,54 @@ const UserManagement = () => {
                   </td>
                   <td className="py-2">{new Date(user.createdAt).toLocaleDateString()}</td>
                   <td className="py-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setEditingUser(user)}
-                      className="gap-1"
-                    >
-                      <Edit size={14} />
-                      Editar
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setEditingUser(user)}
+                        className="gap-1"
+                      >
+                        <Edit size={14} />
+                        Editar
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const token = localStorage.getItem('token');
+                            const res = await apiFetch(`/api/admin/user/${user.id}/disable`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                              body: JSON.stringify({ disabled: !user.disabled })
+                            });
+                            if (res.ok) {
+                              setMessage(!user.disabled ? 'Usuario deshabilitado' : 'Usuario habilitado');
+                              loadUsers();
+                            } else {
+                              const err = await res.json();
+                              setMessage('Error: ' + (err.error || 'No se pudo cambiar estado'));
+                            }
+                          } catch (e) {
+                            setMessage('Error de conexión');
+                          }
+                        }}
+                        className="gap-1"
+                      >
+                        {user.disabled ? 'Habilitar' : 'Deshabilitar'}
+                      </Button>
+
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => { setConfirmDeleteUser(user); setDeleteConfirmationText(''); }}
+                        className="gap-1"
+                      >
+                        <Trash2 size={14} />
+                        Eliminar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -188,6 +229,96 @@ const UserManagement = () => {
             <div className="flex gap-3 mt-6">
               <Button onClick={handleSaveUser}>Guardar</Button>
               <Button variant="outline" onClick={() => setEditingUser(null)}>Cancelar</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal de confirmación de eliminación */}
+      {confirmDeleteUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold mb-4">Eliminar Usuario</h3>
+            <p className="text-sm text-gray-300 mb-4">Estás a punto de eliminar al usuario <strong>{confirmDeleteUser.email}</strong>. Esta acción puede ser reversible (soft) o permanente (hard). Para evitar borrados accidentales, escribe <strong>ELIMINAR</strong> en el campo y confirma.</p>
+
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Escribe ELIMINAR para confirmar"
+                value={deleteConfirmationText}
+                onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white"
+              />
+
+              <div className="flex gap-3">
+                <Button
+                  onClick={async () => {
+                    if (deleteConfirmationText !== 'ELIMINAR') {
+                      setMessage('Debes escribir ELIMINAR para confirmar');
+                      return;
+                    }
+
+                    try {
+                      const token = localStorage.getItem('token');
+                      // Por defecto hacemos soft delete (anonymize + disable). Para hard delete, podríamos pasar hard: true
+                      const res = await apiFetch(`/api/admin/user/${confirmDeleteUser.id}`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ confirm: 'ELIMINAR', hard: false })
+                      });
+
+                      if (res.ok) {
+                        const data = await res.json();
+                        setMessage(data.message || 'Usuario eliminado (soft)');
+                        setConfirmDeleteUser(null);
+                        loadUsers();
+                      } else {
+                        const err = await res.json();
+                        setMessage('Error: ' + (err.error || 'No se pudo eliminar'));
+                      }
+                    } catch (e) {
+                      setMessage('Error de conexión');
+                    }
+                  }}
+                >
+                  Eliminar (soft)
+                </Button>
+
+                <Button
+                  variant="danger"
+                  onClick={async () => {
+                    if (deleteConfirmationText !== 'ELIMINAR') {
+                      setMessage('Debes escribir ELIMINAR para confirmar');
+                      return;
+                    }
+
+                    try {
+                      const token = localStorage.getItem('token');
+                      const res = await apiFetch(`/api/admin/user/${confirmDeleteUser.id}`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ confirm: 'ELIMINAR', hard: true })
+                      });
+
+                      if (res.ok) {
+                        const data = await res.json();
+                        setMessage(data.message || 'Usuario eliminado permanentemente');
+                        setConfirmDeleteUser(null);
+                        loadUsers();
+                      } else {
+                        const err = await res.json();
+                        setMessage('Error: ' + (err.error || 'No se pudo eliminar'));
+                      }
+                    } catch (e) {
+                      setMessage('Error de conexión');
+                    }
+                  }}
+                >
+                  Eliminar (permanente)
+                </Button>
+
+                <Button variant="outline" onClick={() => setConfirmDeleteUser(null)}>Cancelar</Button>
+              </div>
             </div>
           </Card>
         </div>

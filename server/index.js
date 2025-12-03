@@ -841,7 +841,7 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
         }
         
         const users = await prisma.user.findMany({
-            select: { id: true, email: true, name: true, company: true, role: true, createdAt: true }
+            select: { id: true, email: true, name: true, company: true, role: true, createdAt: true, disabled: true }
         });
         res.json(users);
     } catch (error) {
@@ -866,16 +866,81 @@ app.put('/api/admin/user/:id', authenticateToken, async (req, res) => {
         if (role) updateData.role = role;
         if (password) updateData.password = await bcrypt.hash(password, 10);
 
+        // Allow updating disabled flag from admin update
+        if (typeof req.body.disabled === 'boolean') updateData.disabled = req.body.disabled;
+
         const user = await prisma.user.update({
             where: { id: parseInt(req.params.id) },
             data: updateData,
-            select: { id: true, email: true, name: true, company: true, role: true }
+            select: { id: true, email: true, name: true, company: true, role: true, disabled: true }
         });
 
         res.json(user);
     } catch (error) {
         console.error('Error updating user:', error);
         res.status(500).json({ error: 'Failed to update user' });
+    }
+});
+
+// Admin endpoint: enable/disable a user
+app.patch('/api/admin/user/:id/disable', authenticateToken, async (req, res) => {
+    try {
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (currentUser?.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { disabled } = req.body;
+        if (typeof disabled !== 'boolean') return res.status(400).json({ error: 'Invalid payload' });
+
+        const user = await prisma.user.update({
+            where: { id: parseInt(req.params.id) },
+            data: { disabled },
+            select: { id: true, email: true, name: true, role: true, disabled: true }
+        });
+
+        res.json({ ok: true, user });
+    } catch (error) {
+        console.error('Error toggling user disabled:', error);
+        res.status(500).json({ error: 'Failed to update user status' });
+    }
+});
+
+// Admin endpoint: delete a user (requires explicit confirmation to prevent accidents)
+app.delete('/api/admin/user/:id', authenticateToken, async (req, res) => {
+    try {
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (currentUser?.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { confirm, hard } = req.body || {};
+
+        // Require explicit confirmation string to allow deletion
+        if (confirm !== 'ELIMINAR') {
+            return res.status(400).json({ error: 'Deletion not confirmed. Send { confirm: "ELIMINAR" } in body.' });
+        }
+
+        const userId = parseInt(req.params.id);
+
+        if (hard === true) {
+            // Hard delete
+            await prisma.user.delete({ where: { id: userId } });
+            return res.json({ ok: true, deleted: true, message: 'Usuario eliminado permanentemente' });
+        } else {
+            // Soft delete: mark as disabled and anonymize email to prevent reuse
+            const anonEmail = `deleted_${userId}_${Date.now()}@deleted.local`;
+            const user = await prisma.user.update({
+                where: { id: userId },
+                data: { disabled: true, email: anonEmail, name: 'Usuario eliminado' },
+                select: { id: true, email: true, name: true, disabled: true }
+            });
+
+            return res.json({ ok: true, deleted: false, user, message: 'Usuario deshabilitado y anonimizado' });
+        }
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ error: 'Failed to delete user' });
     }
 });
 
