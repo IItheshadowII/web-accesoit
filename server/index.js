@@ -66,11 +66,11 @@ app.use((req, res, next) => {
     
     // More permissive CSP for production (you can tighten this later)
     res.setHeader('Content-Security-Policy', 
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; " +
-        "connect-src 'self' https: wss: ws:; " +
-        "img-src 'self' data: https:; " +
-        "font-src 'self' data: https: fonts.gstatic.com; " +
-        "style-src 'self' 'unsafe-inline' https: fonts.googleapis.com;"
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; " +
+        "connect-src 'self' https: http: wss: ws: localhost:* 127.0.0.1:*; " +
+        "img-src 'self' data: https: http:; " +
+        "font-src 'self' data: https: http: fonts.gstatic.com; " +
+        "style-src 'self' 'unsafe-inline' https: http: fonts.googleapis.com;"
     );
     
     next();
