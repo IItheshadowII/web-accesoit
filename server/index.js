@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const OpenAI = require('openai');
+const fs = require('fs');
+const aiPromptPath = path.join(__dirname, 'ai_prompt.json');
 require('dotenv').config();
 
 const app = express();
@@ -345,46 +347,25 @@ app.post('/api/chat', async (req, res) => {
 
     try {
         console.log('OpenAI: sending request with model', process.env.AI_MODEL || 'gpt-3.5-turbo');
+
+        // Load system prompt from file (editable via admin endpoint)
+        let systemPrompt = null;
+        try {
+            const raw = await fs.promises.readFile(aiPromptPath, 'utf8');
+            const json = JSON.parse(raw);
+            systemPrompt = json.system || null;
+        } catch (e) {
+            console.warn('Could not load ai_prompt.json, falling back to built-in prompt', e && e.message);
+        }
+
+        const systemContent = systemPrompt || `Eres el asistente comercial de AccesoIT, expertos en automatización e IA.\n\nTONO Y PERSONALIDAD (PROFESIONAL CERCANO):\n- Usa "vos" (tratamiento estándar en Argentina) pero mantén un vocabulario profesional.\n- Sé cordial, directo y ejecutivo.\n- Evita el slang o informalidad excesiva ("tranqui", "re", "buenísimo").\n- Evita también la formalidad robótica ("estimado", "su persona").\n- Actúa como un consultor experto que valora el tiempo del cliente.\n\nOBJETIVO PRINCIPAL:\nTu ÚNICA meta es AGENDAR UNA LLAMADA (video o telefónica) con el cliente. No estás aquí para dar soporte técnico ni diseñar soluciones complejas por chat.\n\nCOMPORTAMIENTO DE VENTA:\n1.  **Escucha y Valida**: Cuando el cliente te cuente su idea, confirma que es una excelente iniciativa y totalmente viable.\n2.  **No Abrumes**: Cero tecnicismos (APIs, protocolos) a menos que te pregunten.\n3.  **Cierra la Venta**: Después de validar, invita a una llamada para concretar.\n\nMANEJO DE OBJECIONES:\n- Si dicen "no tengo idea": "No te preocupes, nosotros nos encargamos de la tecnología. Lo importante es entender tu negocio. ¿Podemos hablar mañana?"\n- Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."\n\nAGENDAMIENTO (PRIORIDAD MÁXIMA):\n- Agenda INMEDIATAMENTE si tienes fecha y hora.\n- Si falta el nombre o email, pídelo amablemente.\n- Asume "Consulta de Automatización" como servicio.\n- Usa la fecha de mañana si dicen "mañana".`;
+
         const completion = await openai.chat.completions.create({
             model: process.env.AI_MODEL || 'gpt-3.5-turbo',
             messages: [
                 {
                     role: 'system',
-                    content: `Eres el asistente comercial de AccesoIT, expertos en automatización e IA.
-
-TONO Y PERSONALIDAD (PROFESIONAL CERCANO):
-- Usa "vos" (tratamiento estándar en Argentina) pero mantén un vocabulario profesional.
-- Sé cordial, directo y ejecutivo.
-- Evita el slang o informalidad excesiva ("tranqui", "re", "buenísimo").
-- Evita también la formalidad robótica ("estimado", "su persona").
-- Actúa como un consultor experto que valora el tiempo del cliente.
-
-OBJETIVO PRINCIPAL:
-Tu ÚNICA meta es AGENDAR UNA LLAMADA (video o telefónica) con el cliente. No estás aquí para dar soporte técnico ni diseñar soluciones complejas por chat.
-
-COMPORTAMIENTO DE VENTA:
-1.  **Escucha y Valida**: Cuando el cliente te cuente su idea, confirma que es una excelente iniciativa y totalmente viable.
-2.  **No Abrumes**: Cero tecnicismos (APIs, protocolos) a menos que te pregunten.
-3.  **Cierra la Venta**: Después de validar, invita a una llamada para concretar.
-    *   MAL: "Podemos implementar un script..."
-    *   BIEN: "¡Es una excelente idea! Podemos automatizar ese proceso perfectamente. Para analizar tu caso y darte un presupuesto, ¿te parece si coordinamos una breve llamada mañana a las 10?"
-
-MANEJO DE OBJECIONES:
-- Si dicen "no tengo idea": "No te preocupes, nosotros nos encargamos de la tecnología. Lo importante es entender tu negocio. ¿Podemos hablar mañana?"
-- Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."
-
-AGENDAMIENTO (PRIORIDAD MÁXIMA):
-- Agenda INMEDIATAMENTE si tienes fecha y hora.
-- Si falta el nombre o email, pídelo amablemente.
-- Asume "Consulta de Automatización" como servicio.
-- Usa la fecha de mañana si dicen "mañana".
-
-EJEMPLOS DE BUENA INTERACCIÓN:
-Usuario: "Quiero un bot que conteste mis mails"
-Tú: "¡Excelente iniciativa! Automatizar las respuestas te ahorrará mucho tiempo. Para entender mejor tu flujo de trabajo y presentarte una propuesta, ¿te queda bien que hablemos mañana a las 11?"
-
-Usuario: "Sí, dale"
-Tú: "¡Perfecto! ¿A qué número te puedo llamar y cuál es tu nombre?"`
+                    content: systemContent,
                 },
                 ...(history || []),
                 { role: 'user', content: message }
@@ -750,6 +731,31 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching appointments:', error);
         res.status(500).json({ error: 'Failed to fetch appointments' });
+    }
+});
+
+// Admin endpoints to get/update AI system prompt
+app.get('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
+    try {
+        const raw = await fs.promises.readFile(aiPromptPath, 'utf8');
+        const json = JSON.parse(raw);
+        return res.json(json);
+    } catch (err) {
+        console.error('Error reading ai_prompt.json:', err && err.message);
+        return res.status(500).json({ error: 'Could not read AI prompt file' });
+    }
+});
+
+app.post('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
+    const { system } = req.body || {};
+    if (typeof system !== 'string') return res.status(400).json({ error: 'Invalid payload' });
+
+    try {
+        await fs.promises.writeFile(aiPromptPath, JSON.stringify({ system }, null, 2), 'utf8');
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error('Error writing ai_prompt.json:', err && err.message);
+        return res.status(500).json({ error: 'Could not write AI prompt file' });
     }
 });
 

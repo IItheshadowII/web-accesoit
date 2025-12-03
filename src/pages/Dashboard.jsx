@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Card from '../components/UI/Card';
 import Button from '../components/UI/Button';
 import AppointmentsManager from '../components/Admin/AppointmentsManager';
+import AdminAiPrompt from '../components/Admin/AdminAiPrompt';
 import apiFetch from '../lib/api';
 
 const Dashboard = () => {
@@ -12,7 +13,7 @@ const Dashboard = () => {
     const [services, setServices] = useState([]);
     const [n8nInstances, setN8nInstances] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('services'); // 'services' or 'appointments'
+    const [activeTab, setActiveTab] = useState('services'); // 'services' or 'appointments' or 'n8n' or 'ai'
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -134,6 +135,24 @@ const Dashboard = () => {
                             />
                         )}
                     </button>
+                    <button
+                        onClick={() => setActiveTab('ai')}
+                        className={`px-4 py-2 font-medium transition-colors relative ${activeTab === 'ai'
+                            ? 'text-blue-400'
+                            : 'text-gray-400 hover:text-white'
+                            }`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Workflow size={18} />
+                            <span>AI Prompt</span>
+                        </div>
+                        {activeTab === 'ai' && (
+                            <motion.div
+                                layoutId="activeTab"
+                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400"
+                            />
+                        )}
+                    </button>
                 </div>
 
                 {/* Content */}
@@ -231,6 +250,11 @@ const Dashboard = () => {
                                 </div>
                             )}
                         </div>
+                    </>
+                ) : activeTab === 'ai' ? (
+                    <>
+                        <h2 className="text-2xl font-bold mb-6">Prompt del Asistente</h2>
+                        <AdminAiPrompt />
                     </>
                 ) : (
                     <>
