@@ -60,7 +60,9 @@ const AdminAiPrompt = () => {
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        className="w-full h-64 p-3 bg-black/20 border border-white/10 rounded-md text-sm text-white font-mono"
+        className="w-full h-64 p-3 bg-black/80 border border-white/10 rounded-md text-sm font-mono placeholder-gray-400 resize-none"
+        style={{ backgroundColor: '#071016', color: '#ffffff' }}
+        spellCheck={false}
       />
       <div className="flex items-center gap-3 mt-4">
         <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</Button>
