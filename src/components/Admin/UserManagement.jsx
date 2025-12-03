@@ -132,7 +132,8 @@ const UserManagement = () => {
                   type="email"
                   value={editingUser.email || ''}
                   onChange={(e) => setEditingUser({...editingUser, email: e.target.value})}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                 />
               </div>
               
@@ -142,7 +143,8 @@ const UserManagement = () => {
                   type="text"
                   value={editingUser.name || ''}
                   onChange={(e) => setEditingUser({...editingUser, name: e.target.value})}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                 />
               </div>
               
@@ -152,7 +154,8 @@ const UserManagement = () => {
                   type="text"
                   value={editingUser.company || ''}
                   onChange={(e) => setEditingUser({...editingUser, company: e.target.value})}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                 />
               </div>
               
@@ -161,7 +164,8 @@ const UserManagement = () => {
                 <select
                   value={editingUser.role || 'user'}
                   onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                 >
                   <option value="user">Usuario</option>
                   <option value="admin">Administrador</option>
@@ -175,7 +179,8 @@ const UserManagement = () => {
                   value={editingUser.password || ''}
                   onChange={(e) => setEditingUser({...editingUser, password: e.target.value})}
                   placeholder="Dejar vacío para mantener actual"
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none placeholder-gray-400"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                 />
               </div>
             </div>

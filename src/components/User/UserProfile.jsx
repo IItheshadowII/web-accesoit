@@ -137,7 +137,8 @@ const UserProfile = () => {
               type="email"
               value={profile.email || ''}
               onChange={(e) => setProfile({...profile, email: e.target.value})}
-              className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+              style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
             />
           </div>
           
@@ -150,7 +151,8 @@ const UserProfile = () => {
               type="text"
               value={profile.name || ''}
               onChange={(e) => setProfile({...profile, name: e.target.value})}
-              className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+              style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
             />
           </div>
           
@@ -163,7 +165,8 @@ const UserProfile = () => {
               type="text"
               value={profile.company || ''}
               onChange={(e) => setProfile({...profile, company: e.target.value})}
-              className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+              style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
             />
           </div>
         </div>
@@ -197,7 +200,8 @@ const UserProfile = () => {
                 type="password"
                 value={passwords.new}
                 onChange={(e) => setPasswords({...passwords, new: e.target.value})}
-                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
               />
             </div>
             
@@ -207,7 +211,8 @@ const UserProfile = () => {
                 type="password"
                 value={passwords.confirm}
                 onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
-                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
               />
             </div>
           </div>

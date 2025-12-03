@@ -178,7 +178,8 @@ const TicketSystem = ({ isAdmin = false }) => {
                   type="text"
                   value={newTicket.subject}
                   onChange={(e) => setNewTicket({...newTicket, subject: e.target.value})}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none placeholder-gray-400"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                   placeholder="Describe brevemente el problema"
                 />
               </div>
@@ -188,7 +189,8 @@ const TicketSystem = ({ isAdmin = false }) => {
                 <select
                   value={newTicket.priority}
                   onChange={(e) => setNewTicket({...newTicket, priority: e.target.value})}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                 >
                   <option value="low">Baja</option>
                   <option value="medium">Media</option>
@@ -202,7 +204,8 @@ const TicketSystem = ({ isAdmin = false }) => {
                 <textarea
                   value={newTicket.message}
                   onChange={(e) => setNewTicket({...newTicket, message: e.target.value})}
-                  className="w-full h-32 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white resize-none"
+                  className="w-full h-32 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none placeholder-gray-400"
+                  style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                   placeholder="Describe el problema en detalle"
                 />
               </div>
@@ -259,7 +262,8 @@ const TicketSystem = ({ isAdmin = false }) => {
                 <div className="border-t border-white/10 pt-4">
                   <h4 className="font-medium mb-2">Responder ticket:</h4>
                   <textarea
-                    className="w-full h-24 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white resize-none"
+                    className="w-full h-24 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none placeholder-gray-400"
+                    style={{ backgroundColor: '#1f2937', borderColor: '#4b5563', color: '#ffffff' }}
                     placeholder="Escribe tu respuesta..."
                     defaultValue={selectedTicket.response || ''}
                     onBlur={(e) => {
