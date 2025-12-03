@@ -20,7 +20,6 @@ const Dashboard = () => {
     const navigate = useNavigate();
     
     const isAdmin = user?.role === 'admin';
-    console.log('isAdmin:', isAdmin, 'user:', user);
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -28,15 +27,11 @@ const Dashboard = () => {
 
         if (storedUser) {
             const userData = JSON.parse(storedUser);
-            console.log('User data:', userData);
-            console.log('User role:', userData.role);
             setUser(userData);
             // Set default tab based on role
             if (userData.role === 'admin') {
-                console.log('Setting admin tab to users');
                 setActiveTab('users');
             } else {
-                console.log('Setting user tab to services');
                 setActiveTab('services');
             }
         }

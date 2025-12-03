@@ -116,7 +116,7 @@ app.post('/api/auth/login', async (req, res) => {
         if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
 
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+        res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, company: user.company } });
     } catch (error) {
         res.status(500).json({ error: 'Login failed' });
     }
@@ -174,7 +174,8 @@ app.post('/api/auth/google', async (req, res) => {
                 id: user.id,
                 name: user.name,
                 email: user.email,
-                company: user.company
+                company: user.company,
+                role: user.role
             }
         });
     } catch (error) {
