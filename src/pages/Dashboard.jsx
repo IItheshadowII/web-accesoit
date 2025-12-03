@@ -48,9 +48,14 @@ const Dashboard = () => {
                 if (response.ok) {
                     const data = await response.json();
                     setServices(data.services);
+                } else if (response.status === 401 || response.status === 403) {
+                    // Only logout if token is invalid
+                    handleLogout();
+                    return;
                 }
 
-                const n8nRes = await apiFetch('/api/n8n/instances', {
+                // Fetch n8n instances (don't logout if this fails)
+                const n8nRes = await apiFetch('/api/n8n/instances/me', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -58,17 +63,23 @@ const Dashboard = () => {
                 if (n8nRes.ok) {
                     setN8nInstances(await n8nRes.json());
                 } else {
-                    // If token is invalid, logout
-                    handleLogout();
+                    console.warn('Could not load n8n instances:', n8nRes.status);
+                    // Don't fail the whole dashboard, just show empty n8n instances
+                    setN8nInstances([]);
                 }
             } catch (error) {
                 console.error('Error fetching dashboard:', error);
+                // Don't logout on network errors
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchDashboardData();
+        if (token) {
+            fetchDashboardData();
+        } else {
+            setLoading(false);
+        }
     }, []);
 
     const handleLogout = () => {
