@@ -13,11 +13,13 @@ model User {
   password  String
   name      String?
   company   String?
+  role      String   @default("user") // "admin" or "user"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   services      ServiceStatus[]
   subscriptions Subscription[]
   n8nInstances  N8nInstance[]
+  tickets       Ticket[]
 }
 
 model ServiceStatus {
@@ -71,4 +73,18 @@ model N8nInstance {
   status         String   // 'provisioning','active','suspended','deleted'
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model Ticket {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  subject     String
+  message     String
+  status      String   @default("open") // "open", "in_progress", "closed"
+  priority    String   @default("medium") // "low", "medium", "high", "urgent"
+  response    String?
+  respondedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -759,6 +759,172 @@ app.post('/api/admin/ai-prompt', authenticateToken, async (req, res) => {
     }
 });
 
+// Admin endpoints for user management (admin only)
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+    try {
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (currentUser?.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        
+        const users = await prisma.user.findMany({
+            select: { id: true, email: true, name: true, company: true, role: true, createdAt: true }
+        });
+        res.json(users);
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+app.put('/api/admin/user/:id', authenticateToken, async (req, res) => {
+    try {
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (currentUser?.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { email, password, name, company, role } = req.body;
+        const updateData = {};
+        
+        if (email) updateData.email = email;
+        if (name !== undefined) updateData.name = name;
+        if (company !== undefined) updateData.company = company;
+        if (role) updateData.role = role;
+        if (password) updateData.password = await bcrypt.hash(password, 10);
+
+        const user = await prisma.user.update({
+            where: { id: parseInt(req.params.id) },
+            data: updateData,
+            select: { id: true, email: true, name: true, company: true, role: true }
+        });
+
+        res.json(user);
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ error: 'Failed to update user' });
+    }
+});
+
+// User profile endpoints (any authenticated user)
+app.get('/api/profile', authenticateToken, async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({ 
+            where: { id: req.user.id },
+            select: { id: true, email: true, name: true, company: true, role: true }
+        });
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+app.put('/api/profile', authenticateToken, async (req, res) => {
+    try {
+        const { email, password, name, company } = req.body;
+        const updateData = {};
+        
+        if (email) updateData.email = email;
+        if (name !== undefined) updateData.name = name;
+        if (company !== undefined) updateData.company = company;
+        if (password) updateData.password = await bcrypt.hash(password, 10);
+
+        const user = await prisma.user.update({
+            where: { id: req.user.id },
+            data: updateData,
+            select: { id: true, email: true, name: true, company: true, role: true }
+        });
+
+        res.json(user);
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
+// Ticket system endpoints
+app.get('/api/tickets', authenticateToken, async (req, res) => {
+    try {
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
+        let tickets;
+        
+        if (currentUser?.role === 'admin') {
+            // Admin sees all tickets
+            tickets = await prisma.ticket.findMany({
+                include: { user: { select: { name: true, email: true } } },
+                orderBy: { createdAt: 'desc' }
+            });
+        } else {
+            // Users see only their tickets
+            tickets = await prisma.ticket.findMany({
+                where: { userId: req.user.id },
+                orderBy: { createdAt: 'desc' }
+            });
+        }
+        
+        res.json(tickets);
+    } catch (error) {
+        console.error('Error fetching tickets:', error);
+        res.status(500).json({ error: 'Failed to fetch tickets' });
+    }
+});
+
+app.post('/api/tickets', authenticateToken, async (req, res) => {
+    try {
+        const { subject, message, priority } = req.body;
+        
+        const ticket = await prisma.ticket.create({
+            data: {
+                userId: req.user.id,
+                subject,
+                message,
+                priority: priority || 'medium'
+            }
+        });
+        
+        res.json(ticket);
+    } catch (error) {
+        console.error('Error creating ticket:', error);
+        res.status(500).json({ error: 'Failed to create ticket' });
+    }
+});
+
+app.put('/api/tickets/:id', authenticateToken, async (req, res) => {
+    try {
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user.id } });
+        const { status, response } = req.body;
+        
+        let updateData = {};
+        
+        if (currentUser?.role === 'admin') {
+            // Admin can update status and response
+            if (status) updateData.status = status;
+            if (response !== undefined) {
+                updateData.response = response;
+                if (response) updateData.respondedAt = new Date();
+            }
+        } else {
+            // Users can only update their own tickets (limited fields)
+            const ticket = await prisma.ticket.findUnique({ where: { id: parseInt(req.params.id) } });
+            if (ticket?.userId !== req.user.id) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+            // Users might close their own tickets
+            if (status === 'closed') updateData.status = status;
+        }
+
+        const ticket = await prisma.ticket.update({
+            where: { id: parseInt(req.params.id) },
+            data: updateData
+        });
+
+        res.json(ticket);
+    } catch (error) {
+        console.error('Error updating ticket:', error);
+        res.status(500).json({ error: 'Failed to update ticket' });
+    }
+});
+
 // Update appointment (for admin) - can update status or googleEventId
 app.patch('/api/appointments/:id', authenticateToken, async (req, res) => {
     try {
