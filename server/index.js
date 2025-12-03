@@ -840,8 +840,8 @@ app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
 
 // Catch-all route for React SPA (must be last)
 if (process.env.NODE_ENV === 'production') {
-    // Compatibilidad con path-to-regexp moderno: usar '/(.*)' en lugar de '*'
-    app.get('/(.*)', (req, res) => {
+    // Compatibilidad con path-to-regexp: usar una RegExp para el catch-all
+    app.get(/.*/, (req, res) => {
         res.sendFile(path.join(__dirname, '../dist/index.html'));
     });
 }
