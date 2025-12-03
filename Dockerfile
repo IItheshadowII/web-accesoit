@@ -6,12 +6,15 @@ FROM node:20-bookworm-slim AS frontend-builder
 
 WORKDIR /app
 
-# Dependencias del frontend (ajustá si tu package.json está en otro lado)
+# Dependencias del frontend (package.json en la raíz del proyecto)
 COPY package*.json ./
 RUN npm ci
 
-# Copiamos el código del frontend
+# Copiamos config y entry de Vite
 COPY vite.config.* tsconfig.* ./
+COPY index.html ./
+
+# Código del frontend
 COPY src ./src
 COPY public ./public
 
@@ -25,34 +28,30 @@ RUN npm run build
 ###########
 FROM node:20-bookworm-slim AS server
 
-# Instalar OpenSSL para que Prisma funcione bien
+# OpenSSL para Prisma
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/server
 
-# Dependencias del backend (ajustá si tu package.json está en otra ruta)
+# Dependencias del backend (package.json dentro de /server)
 COPY server/package*.json ./
 RUN npm ci --omit=dev
 
-# Copiamos el código del backend (incluye prisma/, src/, etc.)
+# Código del backend (incluye prisma/, src/, etc.)
 COPY server/ ./
 
-# Copiamos el build del frontend dentro del backend (para servir estáticos)
-# Ajustá la ruta de destino si tu backend sirve archivos desde otra carpeta
+# Copiamos el build del frontend al backend para servirlo como estático
 COPY --from=frontend-builder /app/dist ./public
 
-# Generar Prisma Client dentro de la imagen
+# Generar Prisma Client en la imagen
 RUN npx prisma generate
 
-# Variables por defecto (Easypanel puede sobreescribirlas)
 ENV NODE_ENV=production
 ENV PORT=3002
 
 EXPOSE 3002
 
-# Ajustá el comando según tus scripts de package.json del backend:
-#  - "start"          -> node index.js / ts-node / etc.
-#  - "start:prod"     -> si tenés un build de TypeScript, por ejemplo.
+# Ajustá si tu backend usa otro script de arranque
 CMD ["npm", "run", "start"]
