@@ -1,79 +1,244 @@
-const { exec } = require('child_process');
-const util = require('util');
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
+const easypanelClient = require('./easypanelClient');
 const prisma = new PrismaClient();
 
-const execPromise = util.promisify(exec);
-
-// Configuración (debería venir de .env)
-const N8N_HOST_IP = process.env.N8N_HOST_IP || '192.168.1.100'; // IP del Proxmox/VM Docker
-const N8N_HOST_USER = process.env.N8N_HOST_USER || 'root';
-
-async function provisionN8nInstance(userId) {
+/**
+ * Aprovisiona una nueva instancia de n8n para un usuario
+ * @param {number} userId - ID del usuario
+ * @param {number} planId - ID del plan (opcional)
+ * @returns {Promise<Object>} - Instancia creada
+ */
+async function provisionN8nInstance(userId, planId = null) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
 
-    // Verificar si ya tiene una instancia activa (opcional, por ahora permitimos 1 por usuario)
+    // Verificar si ya tiene una instancia activa
     const existing = await prisma.n8nInstance.findFirst({
-        where: { userId, status: { not: 'deleted' } }
+        where: { 
+            userId, 
+            status: { notIn: ['cancelled', 'error'] } 
+        }
     });
     if (existing) {
         throw new Error('User already has an active n8n instance');
     }
 
-    const slug = `cli${user.id}`; // Simple slug strategy
+    // Generar credenciales únicas y seguras
+    const slug = `cli${user.id}-${Date.now().toString(36).slice(-4)}`;
     const basicAuthUser = `user_${crypto.randomBytes(4).toString('hex')}`;
-    const basicAuthPass = crypto.randomBytes(8).toString('hex') + 'A1!';
+    const basicAuthPass = crypto.randomBytes(12).toString('base64').slice(0, 16) + 'A1!';
     const encryptionKey = crypto.randomBytes(16).toString('hex');
+    const subdomain = `${slug}.n8n.accesoit.com.ar`;
 
     console.log(`[PROVISION] Starting provision for user ${user.email} (slug: ${slug})`);
 
-    // 1. Crear registro en Cloudflare (Simulado o implementar llamada API real si hay credenciales)
-    // await createCloudflareRecord(...) 
-    console.log(`[MOCK] Creating DNS record for ${slug}.n8n.accesoit.com.ar`);
-
-    // 2. Ejecutar script de provisión vía SSH
-    // Nota: Requiere que la máquina donde corre esto tenga acceso SSH sin password (key) al host
-    // El script debe estar en el host remoto en /opt/scripts/provision_n8n.sh
-    const scriptPath = '/opt/scripts/provision_n8n.sh';
-    const cmd = `ssh -o StrictHostKeyChecking=no ${N8N_HOST_USER}@${N8N_HOST_IP} "${scriptPath} ${slug} ${basicAuthUser} ${basicAuthPass} ${encryptionKey}"`;
-
-    console.log(`[PROVISION] Executing SSH command: ${cmd}`);
-
-    // En desarrollo/local, tal vez no queramos ejecutar el SSH real si no está configurado.
-    // Podemos poner un flag para simular.
-    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_SSH_PROVISIONING === 'true') {
-        try {
-            const { stdout, stderr } = await execPromise(cmd);
-            console.log('[SSH STDOUT]', stdout);
-            if (stderr) console.error('[SSH STDERR]', stderr);
-        } catch (error) {
-            console.error('[SSH ERROR]', error);
-            throw new Error('Failed to execute provisioning script on host');
-        }
-    } else {
-        console.log('[MOCK] Skipping SSH execution in non-production env (ENABLE_SSH_PROVISIONING not set)');
-    }
-
-    // 3. Guardar en DB
+    // 1. Crear registro en base de datos con estado "creating"
     const instance = await prisma.n8nInstance.create({
         data: {
             userId: user.id,
+            planId,
             slug,
-            url: `https://${slug}.n8n.accesoit.com.ar`,
-            host: 'n8n-host-01',
+            url: `https://${subdomain}`,
             basicAuthUser,
             basicAuthPass,
             encryptionKey,
-            status: 'active',
+            status: 'creating',
         },
     });
 
-    // 4. Enviar email (Simulado o usar nodemailer existente)
-    console.log(`[MOCK] Sending email to ${user.email} with credentials: URL=${instance.url}, User=${basicAuthUser}, Pass=${basicAuthPass}`);
+    try {
+        // 2. Crear servicio en Easypanel
+        console.log(`[PROVISION] Creating service in Easypanel for ${slug}`);
+        const easypanelResult = await easypanelClient.createN8nService({
+            slug,
+            subdomain,
+            adminEmail: user.email,
+            adminUser: basicAuthUser,
+            adminPassword: basicAuthPass,
+            encryptionKey
+        });
 
-    return instance;
+        // 3. Actualizar instancia con ID de Easypanel y estado running
+        await prisma.n8nInstance.update({
+            where: { id: instance.id },
+            data: {
+                easypanelServiceId: easypanelResult.serviceId,
+                status: 'running'
+            }
+        });
+
+        console.log(`[PROVISION] Instance ${slug} provisioned successfully`);
+        console.log(`[PROVISION] URL: ${instance.url}`);
+        console.log(`[PROVISION] User: ${basicAuthUser}`);
+        console.log(`[PROVISION] Pass: ${basicAuthPass}`);
+
+        // 4. Enviar email con credenciales (simulado - integrar con nodemailer existente)
+        await sendCredentialsEmail(user.email, {
+            url: instance.url,
+            user: basicAuthUser,
+            password: basicAuthPass
+        });
+
+        return {
+            ...instance,
+            easypanelServiceId: easypanelResult.serviceId,
+            status: 'running'
+        };
+
+    } catch (error) {
+        console.error('[PROVISION] Error during provisioning:', error);
+        
+        // Marcar instancia como error
+        await prisma.n8nInstance.update({
+            where: { id: instance.id },
+            data: { status: 'error' }
+        });
+
+        throw new Error(`Failed to provision n8n instance: ${error.message}`);
+    }
 }
 
-module.exports = { provisionN8nInstance };
+/**
+ * Detener una instancia de n8n
+ * @param {number} instanceId - ID de la instancia
+ * @param {number} requestUserId - ID del usuario que hace la petición
+ */
+async function stopN8nInstance(instanceId, requestUserId) {
+    const instance = await prisma.n8nInstance.findUnique({
+        where: { id: instanceId },
+        include: { user: true }
+    });
+
+    if (!instance) throw new Error('Instance not found');
+    
+    // Verificar que el usuario sea el dueño
+    if (instance.userId !== requestUserId) {
+        throw new Error('Unauthorized: not the instance owner');
+    }
+
+    if (!instance.easypanelServiceId) {
+        throw new Error('Instance has no Easypanel service ID');
+    }
+
+    await easypanelClient.stopService(instance.easypanelServiceId);
+    
+    await prisma.n8nInstance.update({
+        where: { id: instanceId },
+        data: { status: 'stopped' }
+    });
+
+    return { success: true, message: 'Instance stopped' };
+}
+
+/**
+ * Iniciar una instancia de n8n
+ * @param {number} instanceId - ID de la instancia
+ * @param {number} requestUserId - ID del usuario que hace la petición
+ */
+async function startN8nInstance(instanceId, requestUserId) {
+    const instance = await prisma.n8nInstance.findUnique({
+        where: { id: instanceId },
+        include: { user: true }
+    });
+
+    if (!instance) throw new Error('Instance not found');
+    
+    if (instance.userId !== requestUserId) {
+        throw new Error('Unauthorized: not the instance owner');
+    }
+
+    if (!instance.easypanelServiceId) {
+        throw new Error('Instance has no Easypanel service ID');
+    }
+
+    await easypanelClient.startService(instance.easypanelServiceId);
+    
+    await prisma.n8nInstance.update({
+        where: { id: instanceId },
+        data: { status: 'running' }
+    });
+
+    return { success: true, message: 'Instance started' };
+}
+
+/**
+ * Eliminar una instancia de n8n
+ * @param {number} instanceId - ID de la instancia
+ * @param {number} requestUserId - ID del usuario que hace la petición
+ * @param {boolean} hardDelete - Si eliminar también los datos persistentes
+ */
+async function deleteN8nInstance(instanceId, requestUserId, hardDelete = false) {
+    const instance = await prisma.n8nInstance.findUnique({
+        where: { id: instanceId },
+        include: { user: true }
+    });
+
+    if (!instance) throw new Error('Instance not found');
+    
+    if (instance.userId !== requestUserId) {
+        throw new Error('Unauthorized: not the instance owner');
+    }
+
+    if (instance.easypanelServiceId) {
+        // Eliminar servicio de Easypanel
+        await easypanelClient.deleteService(instance.easypanelServiceId, hardDelete);
+    }
+
+    // Soft delete: marcar como cancelled
+    await prisma.n8nInstance.update({
+        where: { id: instanceId },
+        data: { status: 'cancelled' }
+    });
+
+    return { success: true, message: 'Instance deleted' };
+}
+
+/**
+ * Obtener el estado de una instancia desde Easypanel
+ * @param {number} instanceId - ID de la instancia
+ */
+async function getN8nInstanceStatus(instanceId) {
+    const instance = await prisma.n8nInstance.findUnique({
+        where: { id: instanceId }
+    });
+
+    if (!instance) throw new Error('Instance not found');
+    
+    if (!instance.easypanelServiceId) {
+        return { status: instance.status, message: 'No Easypanel service' };
+    }
+
+    try {
+        const easypanelStatus = await easypanelClient.getServiceStatus(instance.easypanelServiceId);
+        return easypanelStatus;
+    } catch (error) {
+        console.error('[STATUS] Error getting status from Easypanel:', error);
+        return { status: instance.status, error: error.message };
+    }
+}
+
+/**
+ * Enviar email con credenciales (stub - integrar con nodemailer existente)
+ */
+async function sendCredentialsEmail(email, credentials) {
+    // TODO: Integrar con el sistema de email existente (nodemailer)
+    console.log(`[EMAIL] Sending credentials to ${email}`);
+    console.log(`[EMAIL] URL: ${credentials.url}`);
+    console.log(`[EMAIL] User: ${credentials.user}`);
+    console.log(`[EMAIL] Password: ${credentials.password}`);
+    
+    // Aquí debería ir la integración con nodemailer
+    // const transporter = nodemailer.createTransport(...);
+    // await transporter.sendMail({...});
+    
+    return { sent: true };
+}
+
+module.exports = {
+    provisionN8nInstance,
+    stopN8nInstance,
+    startN8nInstance,
+    deleteN8nInstance,
+    getN8nInstanceStatus
+};

@@ -49,10 +49,25 @@ model Appointment {
   updatedAt      DateTime @updatedAt
 }
 
+model Plan {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique // "Básico n8n", "Pro n8n", etc.
+  description     String?
+  priceMonthly    Float    // Precio en USD
+  features        String   // JSON con características
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  subscriptions   Subscription[]
+  n8nInstances    N8nInstance[]
+}
+
 model Subscription {
   id                 Int      @id @default(autoincrement())
   userId             Int
   user               User     @relation(fields: [userId], references: [id])
+  planId             Int?
+  plan               Plan?    @relation(fields: [planId], references: [id])
   provider           String   // 'stripe', 'mercadopago', etc.
   providerCustomerId String
   providerSubId      String
@@ -62,18 +77,20 @@ model Subscription {
 }
 
 model N8nInstance {
-  id             Int      @id @default(autoincrement())
-  userId         Int
-  user           User     @relation(fields: [userId], references: [id])
-  slug           String   @unique   // ej. 'cli-123'
-  url            String
-  host           String   // ej. 'n8n-host-01'
-  basicAuthUser  String
-  basicAuthPass  String
-  encryptionKey  String   // CRÍTICO: Para persistir credenciales entre reinicios
-  status         String   // 'provisioning','active','suspended','deleted'
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  userId              Int
+  user                User     @relation(fields: [userId], references: [id])
+  planId              Int?
+  plan                Plan?    @relation(fields: [planId], references: [id])
+  slug                String   @unique   // ej. 'cli-123'
+  url                 String
+  easypanelServiceId  String?  // ID del servicio en Easypanel
+  basicAuthUser       String
+  basicAuthPass       String
+  encryptionKey       String   // CRÍTICO: Para persistir credenciales entre reinicios
+  status              String   @default("creating") // 'creating', 'running', 'stopped', 'error', 'cancelled'
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Ticket {

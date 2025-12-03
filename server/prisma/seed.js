@@ -14,6 +14,7 @@ async function main() {
             name: 'Admin User',
             company: 'AccesoIT Internal',
             password: hashedPassword,
+            role: 'admin',
             services: {
                 create: [
                     { name: 'Bot WhatsApp Ventas', status: 'Active', description: 'Bot activo respondiendo consultas.' },
@@ -24,7 +25,26 @@ async function main() {
         },
     });
 
-    console.log({ user });
+    // Crear plan básico de n8n
+    const basicPlan = await prisma.plan.upsert({
+        where: { name: 'Básico n8n' },
+        update: {},
+        create: {
+            name: 'Básico n8n',
+            description: 'Plan básico de automatización con n8n',
+            priceMonthly: 10.0,
+            features: JSON.stringify({
+                workflows: 10,
+                executions: 1000,
+                cpu: '0.5',
+                memory: '1GB',
+                support: 'Email'
+            }),
+            active: true
+        }
+    });
+
+    console.log({ user, basicPlan });
 }
 
 main()

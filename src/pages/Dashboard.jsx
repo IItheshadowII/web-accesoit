@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Server, Activity, LogOut, User, Calendar, Workflow } from 'lucide-react';
+import { Server, Activity, LogOut, User, Calendar, Workflow, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../components/UI/Card';
 import Button from '../components/UI/Button';
@@ -9,6 +9,7 @@ import AdminAiPrompt from '../components/Admin/AdminAiPrompt';
 import UserManagement from '../components/Admin/UserManagement';
 import UserProfile from '../components/User/UserProfile';
 import TicketSystem from '../components/User/TicketSystem';
+import N8nInstancesManager from '../components/User/N8nInstancesManager';
 import apiFetch from '../lib/api';
 
 const Dashboard = () => {
@@ -326,67 +327,44 @@ const Dashboard = () => {
                         {activeTab === 'n8n' && (
                             <>
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold">Mis Instancias n8n</h2>
-                                    <Button onClick={async () => {
-                                        try {
-                                            const token = localStorage.getItem('token');
-                                            const res = await apiFetch('/api/n8n/provision', {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'Authorization': `Bearer ${token}`
-                                                },
-                                                body: JSON.stringify({ userId: user.id })
-                                            });
-                                            if (res.ok) {
-                                                alert('Instancia solicitada. Recibirás un email con las credenciales.');
-                                                // Recargar instancias
-                                                const updatedRes = await apiFetch('/api/n8n/instances', { headers: { 'Authorization': `Bearer ${token}` } });
-                                                if (updatedRes.ok) setN8nInstances(await updatedRes.json());
-                                            } else {
-                                                const err = await res.json();
-                                                alert('Error: ' + (err.error || 'No se pudo crear la instancia'));
+                                    <div>
+                                        <h2 className="text-2xl font-bold">Mis Instancias n8n</h2>
+                                        <p className="text-gray-400 text-sm mt-1">
+                                            Gestiona tus instancias de automatización n8n
+                                        </p>
+                                    </div>
+                                    <Button 
+                                        onClick={async () => {
+                                            try {
+                                                const token = localStorage.getItem('token');
+                                                const res = await apiFetch('/api/n8n/instances/provision', {
+                                                    method: 'POST',
+                                                    headers: {
+                                                        'Content-Type': 'application/json',
+                                                        'Authorization': `Bearer ${token}`
+                                                    },
+                                                    body: JSON.stringify({})
+                                                });
+                                                if (res.ok) {
+                                                    alert('✓ Instancia solicitada. Se está aprovisionando...');
+                                                    // Recargar página para actualizar lista
+                                                    window.location.reload();
+                                                } else {
+                                                    const err = await res.json();
+                                                    alert('Error: ' + (err.error || 'No se pudo crear la instancia'));
+                                                }
+                                            } catch (e) {
+                                                console.error(e);
+                                                alert('Error de conexión');
                                             }
-                                        } catch (e) {
-                                            console.error(e);
-                                            alert('Error de conexión');
-                                        }
-                                    }}>
+                                        }}
+                                        className="gap-2"
+                                    >
+                                        <Plus size={18} />
                                         Nueva Instancia
                                     </Button>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {n8nInstances.map((instance) => (
-                                        <Card key={instance.id} className="relative overflow-hidden border border-blue-500/30">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="p-3 bg-blue-500/10 rounded-lg">
-                                                    <Workflow className="text-blue-400" />
-                                                </div>
-                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${instance.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
-                                                    }`}>
-                                                    {instance.status.toUpperCase()}
-                                                </span>
-                                            </div>
-                                            <h3 className="text-xl font-bold mb-2">{instance.slug}</h3>
-                                            <div className="space-y-2 text-sm text-gray-300">
-                                                <p><strong>URL:</strong> <a href={instance.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{instance.url}</a></p>
-                                                <p><strong>Host:</strong> {instance.host}</p>
-                                                <p><strong>Usuario:</strong> {instance.basicAuthUser}</p>
-                                                <div className="bg-black/30 p-2 rounded text-xs font-mono break-all">
-                                                    Pass: {instance.basicAuthPass}
-                                                </div>
-                                                <p className="text-xs text-gray-500 mt-2">⚠️ Guarda estas credenciales. Se recomienda cambiarlas tras el primer ingreso.</p>
-                                            </div>
-                                        </Card>
-                                    ))}
-                                    {n8nInstances.length === 0 && (
-                                        <div className="col-span-2 text-center py-10 text-gray-500 bg-white/5 rounded-xl border border-dashed border-white/10">
-                                            <Workflow className="mx-auto mb-4 opacity-50" size={48} />
-                                            <p>No tienes instancias de n8n activas.</p>
-                                            <p className="text-sm mt-2">Haz clic en "Nueva Instancia" para comenzar.</p>
-                                        </div>
-                                    )}
-                                </div>
+                                <N8nInstancesManager />
                             </>
                         )}
                     </>

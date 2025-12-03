@@ -133,6 +133,9 @@ const authenticateTokenWithDisabledCheck = (req, res, next) => {
 const n8nRoutes = require('./routes/n8n');
 app.use('/api/n8n', authenticateTokenWithDisabledCheck, n8nRoutes);
 
+const paymentsRoutes = require('./routes/payments');
+app.use('/api/webhooks/payments', paymentsRoutes);
+
 // Login Route
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
