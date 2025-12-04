@@ -1,42 +1,36 @@
 /**
- * Cliente SSH para gestionar instancias n8n mediante scripts en el host
- * Usa comandos SSH para ejecutar scripts en el servidor que gestiona Docker
+ * Cliente para gestionar instancias n8n mediante scripts bash en el host
+ * Ejecuta comandos directamente en el host del contenedor
  */
 
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
-const SSH_HOST = process.env.SSH_HOST || 'localhost';
-const SSH_USER = process.env.SSH_USER || 'ebanega';
-const SSH_KEY = process.env.SSH_KEY || ''; // Path a la clave SSH si es necesario
-const MOCK_MODE = process.env.MOCK_SSH !== 'false';
+// Por defecto en modo MOCK hasta que se configure correctamente
+const MOCK_MODE = process.env.MOCK_PROVISIONING !== 'false';
 
-console.log('[SSH Client] Configuration:', {
-  host: SSH_HOST,
-  user: SSH_USER,
-  hasKey: !!SSH_KEY,
-  mockMode: MOCK_MODE
+console.log('[Provisioning Client] Configuration:', {
+  mockMode: MOCK_MODE,
+  note: MOCK_MODE ? 'Set MOCK_PROVISIONING=false to enable real provisioning' : 'Real provisioning enabled'
 });
 
 /**
- * Ejecutar comando SSH en el host
+ * Ejecutar comando bash directamente
+ * Los scripts están instalados en /usr/local/bin del host
+ * y son accesibles desde el contenedor si se monta el socket de Docker
  */
-async function executeSSH(command) {
+async function executeCommand(command) {
   if (MOCK_MODE) {
-    console.log(`[SSH] MOCK MODE - Would execute: ${command}`);
-    return { stdout: 'mock-container-id', stderr: '' };
+    console.log(`[Provisioning] MOCK MODE - Would execute: ${command}`);
+    return { stdout: `mock-output-${Date.now()}`, stderr: '' };
   }
 
-  const sshCommand = SSH_KEY 
-    ? `ssh -i ${SSH_KEY} ${SSH_USER}@${SSH_HOST} "${command}"`
-    : `ssh ${SSH_USER}@${SSH_HOST} "${command}"`;
-
   try {
-    const result = await execPromise(sshCommand);
+    const result = await execPromise(command, { timeout: 30000 }); // 30 seg timeout
     return result;
   } catch (error) {
-    throw new Error(`SSH command failed: ${error.message}`);
+    throw new Error(`Command failed: ${error.message}`);
   }
 }
 
@@ -45,10 +39,10 @@ async function executeSSH(command) {
  */
 async function createN8nService({ slug, subdomain, adminUser, adminPassword, encryptionKey }) {
   try {
-    console.log(`[SSH] Creating n8n service: ${slug}`);
+    console.log(`[Provisioning] Creating n8n service: ${slug}`);
 
     if (MOCK_MODE) {
-      console.log('[SSH] MOCK MODE - Simulating service creation');
+      console.log('[Provisioning] MOCK MODE - Simulating service creation');
       return {
         serviceId: `mock-n8n-${slug}`,
         status: 'running',
@@ -57,7 +51,7 @@ async function createN8nService({ slug, subdomain, adminUser, adminPassword, enc
     }
 
     const command = `/usr/local/bin/easypanel-create-n8n "${slug}" "${subdomain}" "${adminUser}" "${adminPassword}" "${encryptionKey}"`;
-    const { stdout, stderr } = await executeSSH(command);
+    const { stdout, stderr } = await executeCommand(command);
 
     if (stderr && !stdout) {
       throw new Error(`Failed to create service: ${stderr}`);
@@ -66,7 +60,7 @@ async function createN8nService({ slug, subdomain, adminUser, adminPassword, enc
     // El script retorna el container ID
     const containerId = stdout.trim().split('\n').pop();
 
-    console.log(`[SSH] Service created: ${containerId}`);
+    console.log(`[Provisioning] Service created: ${containerId}`);
 
     return {
       serviceId: containerId,
@@ -75,7 +69,7 @@ async function createN8nService({ slug, subdomain, adminUser, adminPassword, enc
     };
 
   } catch (error) {
-    console.error('[SSH] Error creating service:', error);
+    console.error('[Provisioning] Error creating service:', error);
     throw new Error(`Failed to create n8n service: ${error.message}`);
   }
 }
@@ -93,7 +87,7 @@ async function getServiceStatus(serviceId) {
     }
 
     const command = `docker inspect ${serviceId} --format '{{.State.Status}}'`;
-    const { stdout } = await executeSSH(command);
+    const { stdout } = await executeCommand(command);
     
     const status = stdout.trim();
 
@@ -103,7 +97,7 @@ async function getServiceStatus(serviceId) {
     };
 
   } catch (error) {
-    console.error('[SSH] Error getting service status:', error);
+    console.error('[Provisioning] Error getting service status:', error);
     return {
       status: 'unknown',
       containerStatus: 'error'
@@ -116,20 +110,20 @@ async function getServiceStatus(serviceId) {
  */
 async function stopService(serviceId) {
   try {
-    console.log(`[SSH] Stopping service: ${serviceId}`);
+    console.log(`[Provisioning] Stopping service: ${serviceId}`);
 
     if (MOCK_MODE) {
-      console.log('[SSH] MOCK MODE - Simulating stop');
+      console.log('[Provisioning] MOCK MODE - Simulating stop');
       return { success: true, message: 'Service stopped (mock)' };
     }
 
     const command = `/usr/local/bin/easypanel-stop-n8n "${serviceId}"`;
-    await executeSSH(command);
+    await executeCommand(command);
 
     return { success: true, message: 'Service stopped successfully' };
 
   } catch (error) {
-    console.error('[SSH] Error stopping service:', error);
+    console.error('[Provisioning] Error stopping service:', error);
     throw new Error(`Failed to stop service: ${error.message}`);
   }
 }
@@ -139,20 +133,20 @@ async function stopService(serviceId) {
  */
 async function startService(serviceId) {
   try {
-    console.log(`[SSH] Starting service: ${serviceId}`);
+    console.log(`[Provisioning] Starting service: ${serviceId}`);
 
     if (MOCK_MODE) {
-      console.log('[SSH] MOCK MODE - Simulating start');
+      console.log('[Provisioning] MOCK MODE - Simulating start');
       return { success: true, message: 'Service started (mock)' };
     }
 
     const command = `/usr/local/bin/easypanel-start-n8n "${serviceId}"`;
-    await executeSSH(command);
+    await executeCommand(command);
 
     return { success: true, message: 'Service started successfully' };
 
   } catch (error) {
-    console.error('[SSH] Error starting service:', error);
+    console.error('[Provisioning] Error starting service:', error);
     throw new Error(`Failed to start service: ${error.message}`);
   }
 }
@@ -162,20 +156,20 @@ async function startService(serviceId) {
  */
 async function deleteService(serviceId, deleteVolumes = false) {
   try {
-    console.log(`[SSH] Deleting service: ${serviceId} (deleteVolumes: ${deleteVolumes})`);
+    console.log(`[Provisioning] Deleting service: ${serviceId} (deleteVolumes: ${deleteVolumes})`);
 
     if (MOCK_MODE) {
-      console.log('[SSH] MOCK MODE - Simulating delete');
+      console.log('[Provisioning] MOCK MODE - Simulating delete');
       return { success: true, message: 'Service deleted (mock)' };
     }
 
     const command = `/usr/local/bin/easypanel-delete-n8n "${serviceId}" "${deleteVolumes}"`;
-    await executeSSH(command);
+    await executeCommand(command);
 
     return { success: true, message: 'Service deleted successfully' };
 
   } catch (error) {
-    console.error('[SSH] Error deleting service:', error);
+    console.error('[Provisioning] Error deleting service:', error);
     throw new Error(`Failed to delete service: ${error.message}`);
   }
 }
