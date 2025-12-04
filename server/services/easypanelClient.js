@@ -11,6 +11,14 @@ const EASYPANEL_PROJECT_ID = process.env.EASYPANEL_PROJECT_ID || 'default';
 // Modo MOCK activado por defecto hasta configurar API key real
 const MOCK_MODE = process.env.MOCK_EASYPANEL !== 'false' && !EASYPANEL_API_KEY;
 
+// Log de configuración al cargar el módulo
+console.log('[Easypanel Client] Configuration:', {
+  url: EASYPANEL_URL,
+  hasApiKey: !!EASYPANEL_API_KEY,
+  projectId: EASYPANEL_PROJECT_ID,
+  mockMode: MOCK_MODE
+});
+
 /**
  * Crear un nuevo servicio n8n en Easypanel
  * @param {Object} config - Configuración del servicio
@@ -74,6 +82,7 @@ async function createN8nService({ slug, subdomain, adminEmail, adminPassword, ad
     // Si no hay API key configurada, simular creación (modo desarrollo)
     if (MOCK_MODE) {
       console.log('[Easypanel] MOCK MODE - Simulating service creation');
+      console.log('[Easypanel] Para activar provisioning real, configura EASYPANEL_API_KEY y verifica los endpoints en CONFIGURACION-EASYPANEL.md');
       return {
         serviceId: `mock-service-${slug}-${Date.now()}`,
         status: 'running',
@@ -82,6 +91,9 @@ async function createN8nService({ slug, subdomain, adminEmail, adminPassword, ad
     }
 
     // Llamada real a la API de Easypanel
+    // NOTA: Este endpoint puede estar incorrecto. Easypanel podría usar tRPC o una API diferente.
+    // Ver CONFIGURACION-EASYPANEL.md para instrucciones de cómo verificar el endpoint correcto.
+    // Posibles alternativas: /trpc/service.create, /api/v1/services, /api/projects/${EASYPANEL_PROJECT_ID}/services
     const response = await fetch(`${EASYPANEL_URL}/api/services`, {
       method: 'POST',
       headers: {
