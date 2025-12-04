@@ -52,10 +52,21 @@ COPY --from=frontend-builder /app/dist ./public
 # Generar Prisma Client en la imagen
 RUN npx prisma generate
 
+# Crear script de inicio que ejecute migraciones antes de arrancar
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "🔄 Running database migrations..."\n\
+npx prisma migrate deploy\n\
+echo "🌱 Running seed (if needed)..."\n\
+npx prisma db seed || echo "Seed skipped"\n\
+echo "✅ Starting server..."\n\
+exec npm run start' > /app/server/docker-entrypoint.sh \
+    && chmod +x /app/server/docker-entrypoint.sh
+
 ENV NODE_ENV=production
 ENV PORT=3002
 
 EXPOSE 3002
 
-# Ajustá si tu backend usa otro script de arranque
-CMD ["npm", "run", "start"]
+# Usar el script de inicio en vez de npm start directo
+CMD ["/app/server/docker-entrypoint.sh"]
