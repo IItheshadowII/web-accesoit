@@ -3,9 +3,13 @@
  * Gestiona el ciclo de vida de servicios Docker (crear, obtener estado, iniciar, detener, eliminar)
  */
 
-const EASYPANEL_URL = process.env.EASYPANEL_URL || 'http://localhost:3000';
+// En Docker, Easypanel está accesible por su nombre de servicio en la red easypanel
+// Usar el nombre del contenedor o el servicio configurado en Docker Compose
+const EASYPANEL_URL = process.env.EASYPANEL_URL || 'http://easypanel:3000';
 const EASYPANEL_API_KEY = process.env.EASYPANEL_API_KEY || '';
 const EASYPANEL_PROJECT_ID = process.env.EASYPANEL_PROJECT_ID || 'default';
+// Modo MOCK activado por defecto hasta configurar API key real
+const MOCK_MODE = process.env.MOCK_EASYPANEL !== 'false' && !EASYPANEL_API_KEY;
 
 /**
  * Crear un nuevo servicio n8n en Easypanel
@@ -68,7 +72,7 @@ async function createN8nService({ slug, subdomain, adminEmail, adminPassword, ad
     console.log(`[Easypanel] Creating n8n service: ${slug}`);
 
     // Si no hay API key configurada, simular creación (modo desarrollo)
-    if (!EASYPANEL_API_KEY || process.env.MOCK_EASYPANEL === 'true') {
+    if (MOCK_MODE) {
       console.log('[Easypanel] MOCK MODE - Simulating service creation');
       return {
         serviceId: `mock-service-${slug}-${Date.now()}`,
@@ -116,7 +120,7 @@ async function createN8nService({ slug, subdomain, adminEmail, adminPassword, ad
 async function getServiceStatus(serviceId) {
   try {
     // Modo mock
-    if (!EASYPANEL_API_KEY || process.env.MOCK_EASYPANEL === 'true') {
+    if (MOCK_MODE) {
       console.log(`[Easypanel] MOCK MODE - Getting status for ${serviceId}`);
       return {
         status: 'running',
@@ -162,7 +166,7 @@ async function stopService(serviceId) {
   try {
     console.log(`[Easypanel] Stopping service: ${serviceId}`);
 
-    if (!EASYPANEL_API_KEY || process.env.MOCK_EASYPANEL === 'true') {
+    if (MOCK_MODE) {
       console.log('[Easypanel] MOCK MODE - Simulating stop');
       return { success: true, message: 'Service stopped (mock)' };
     }
@@ -195,7 +199,7 @@ async function startService(serviceId) {
   try {
     console.log(`[Easypanel] Starting service: ${serviceId}`);
 
-    if (!EASYPANEL_API_KEY || process.env.MOCK_EASYPANEL === 'true') {
+    if (MOCK_MODE) {
       console.log('[Easypanel] MOCK MODE - Simulating start');
       return { success: true, message: 'Service started (mock)' };
     }
@@ -229,7 +233,7 @@ async function deleteService(serviceId, deleteVolumes = false) {
   try {
     console.log(`[Easypanel] Deleting service: ${serviceId} (deleteVolumes: ${deleteVolumes})`);
 
-    if (!EASYPANEL_API_KEY || process.env.MOCK_EASYPANEL === 'true') {
+    if (MOCK_MODE) {
       console.log('[Easypanel] MOCK MODE - Simulating delete');
       return { success: true, message: 'Service deleted (mock)' };
     }
