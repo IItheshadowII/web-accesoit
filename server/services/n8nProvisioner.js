@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
-const easypanelClient = require('./easypanelClient');
+// Usar SSH client para ejecutar comandos en el host en lugar de API de Easypanel
+const provisioningClient = require('./sshClient');
 const prisma = new PrismaClient();
 
 /**
@@ -48,9 +49,9 @@ async function provisionN8nInstance(userId, planId = null) {
     });
 
     try {
-        // 2. Crear servicio en Easypanel
-        console.log(`[PROVISION] Creating service in Easypanel for ${slug}`);
-        const easypanelResult = await easypanelClient.createN8nService({
+        // 2. Crear servicio usando SSH client
+        console.log(`[PROVISION] Creating service via SSH for ${slug}`);
+        const easypanelResult = await provisioningClient.createN8nService({
             slug,
             subdomain,
             adminEmail: user.email,
@@ -121,7 +122,7 @@ async function stopN8nInstance(instanceId, requestUserId) {
         throw new Error('Instance has no Easypanel service ID');
     }
 
-    await easypanelClient.stopService(instance.easypanelServiceId);
+    await provisioningClient.stopService(instance.easypanelServiceId);
     
     await prisma.n8nInstance.update({
         where: { id: instanceId },
@@ -152,7 +153,7 @@ async function startN8nInstance(instanceId, requestUserId) {
         throw new Error('Instance has no Easypanel service ID');
     }
 
-    await easypanelClient.startService(instance.easypanelServiceId);
+    await provisioningClient.startService(instance.easypanelServiceId);
     
     await prisma.n8nInstance.update({
         where: { id: instanceId },
@@ -181,8 +182,8 @@ async function deleteN8nInstance(instanceId, requestUserId, hardDelete = false) 
     }
 
     if (instance.easypanelServiceId) {
-        // Eliminar servicio de Easypanel
-        await easypanelClient.deleteService(instance.easypanelServiceId, hardDelete);
+        // Eliminar servicio via SSH
+        await provisioningClient.deleteService(instance.easypanelServiceId, hardDelete);
     }
 
     // Soft delete: marcar como cancelled
@@ -210,10 +211,10 @@ async function getN8nInstanceStatus(instanceId) {
     }
 
     try {
-        const easypanelStatus = await easypanelClient.getServiceStatus(instance.easypanelServiceId);
+        const easypanelStatus = await provisioningClient.getServiceStatus(instance.easypanelServiceId);
         return easypanelStatus;
     } catch (error) {
-        console.error('[STATUS] Error getting status from Easypanel:', error);
+        console.error('[STATUS] Error getting status from provisioning client:', error);
         return { status: instance.status, error: error.message };
     }
 }
