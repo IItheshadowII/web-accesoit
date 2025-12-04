@@ -1,36 +1,51 @@
 /**
- * Cliente para gestionar instancias n8n mediante scripts bash en el host
- * Ejecuta comandos directamente en el host del contenedor
+ * Cliente HTTP para gestionar instancias n8n mediante servicio de provisioning
+ * Se comunica con provisioning-service.js que corre en el host
  */
 
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
-
-// Por defecto en modo MOCK hasta que se configure correctamente
+const PROVISIONING_URL = process.env.PROVISIONING_URL || 'http://192.168.1.41:3003';
+const PROVISIONING_TOKEN = process.env.PROVISIONING_TOKEN || 'change-this-secret-token';
 const MOCK_MODE = process.env.MOCK_PROVISIONING !== 'false';
 
 console.log('[Provisioning Client] Configuration:', {
-  mockMode: MOCK_MODE,
-  note: MOCK_MODE ? 'Set MOCK_PROVISIONING=false to enable real provisioning' : 'Real provisioning enabled'
+  url: PROVISIONING_URL,
+  hasToken: !!PROVISIONING_TOKEN,
+  mockMode: MOCK_MODE
 });
 
 /**
- * Ejecutar comando bash directamente
- * Los scripts están instalados en /usr/local/bin del host
- * y son accesibles desde el contenedor si se monta el socket de Docker
+ * Hacer llamada HTTP al servicio de provisioning
  */
-async function executeCommand(command) {
+async function callProvisioningService(endpoint, method = 'POST', body = null) {
   if (MOCK_MODE) {
-    console.log(`[Provisioning] MOCK MODE - Would execute: ${command}`);
-    return { stdout: `mock-output-${Date.now()}`, stderr: '' };
+    console.log(`[Provisioning] MOCK MODE - Would call: ${method} ${endpoint}`);
+    return { success: true, containerId: `mock-${Date.now()}` };
+  }
+
+  const url = `${PROVISIONING_URL}${endpoint}`;
+  const options = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${PROVISIONING_TOKEN}`
+    }
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
   }
 
   try {
-    const result = await execPromise(command, { timeout: 30000 }); // 30 seg timeout
-    return result;
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    return data;
   } catch (error) {
-    throw new Error(`Command failed: ${error.message}`);
+    throw new Error(`Provisioning service error: ${error.message}`);
   }
 }
 
@@ -50,22 +65,20 @@ async function createN8nService({ slug, subdomain, adminUser, adminPassword, enc
       };
     }
 
-    const command = `/usr/local/bin/easypanel-create-n8n "${slug}" "${subdomain}" "${adminUser}" "${adminPassword}" "${encryptionKey}"`;
-    const { stdout, stderr } = await executeCommand(command);
+    const result = await callProvisioningService('/create', 'POST', {
+      slug,
+      subdomain,
+      adminUser,
+      adminPassword,
+      encryptionKey
+    });
 
-    if (stderr && !stdout) {
-      throw new Error(`Failed to create service: ${stderr}`);
-    }
-
-    // El script retorna el container ID
-    const containerId = stdout.trim().split('\n').pop();
-
-    console.log(`[Provisioning] Service created: ${containerId}`);
+    console.log(`[Provisioning] Service created: ${result.containerId}`);
 
     return {
-      serviceId: containerId,
+      serviceId: result.containerId,
       status: 'running',
-      url: `https://${subdomain}`
+      url: result.url
     };
 
   } catch (error) {
@@ -86,14 +99,11 @@ async function getServiceStatus(serviceId) {
       };
     }
 
-    const command = `docker inspect ${serviceId} --format '{{.State.Status}}'`;
-    const { stdout } = await executeCommand(command);
-    
-    const status = stdout.trim();
+    const result = await callProvisioningService(`/status/${serviceId}`, 'GET');
 
     return {
-      status: status,
-      containerStatus: status === 'running' ? 'healthy' : status
+      status: result.status,
+      containerStatus: result.status === 'running' ? 'healthy' : result.status
     };
 
   } catch (error) {
@@ -117,8 +127,7 @@ async function stopService(serviceId) {
       return { success: true, message: 'Service stopped (mock)' };
     }
 
-    const command = `/usr/local/bin/easypanel-stop-n8n "${serviceId}"`;
-    await executeCommand(command);
+    await callProvisioningService('/stop', 'POST', { containerId: serviceId });
 
     return { success: true, message: 'Service stopped successfully' };
 
@@ -140,8 +149,7 @@ async function startService(serviceId) {
       return { success: true, message: 'Service started (mock)' };
     }
 
-    const command = `/usr/local/bin/easypanel-start-n8n "${serviceId}"`;
-    await executeCommand(command);
+    await callProvisioningService('/start', 'POST', { containerId: serviceId });
 
     return { success: true, message: 'Service started successfully' };
 
@@ -163,8 +171,8 @@ async function deleteService(serviceId, deleteVolumes = false) {
       return { success: true, message: 'Service deleted (mock)' };
     }
 
-    const command = `/usr/local/bin/easypanel-delete-n8n "${serviceId}" "${deleteVolumes}"`;
-    await executeCommand(command);
+    const endpoint = `/delete/${serviceId}${deleteVolumes ? '?volumes=true' : ''}`;
+    await callProvisioningService(endpoint, 'DELETE');
 
     return { success: true, message: 'Service deleted successfully' };
 
