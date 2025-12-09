@@ -39,7 +39,7 @@ const Footer = () => {
                     <h3 className="text-white font-bold mb-4">Contacto</h3>
                     <ul className="text-gray-400 text-sm space-y-2">
                         <li className="flex items-center gap-2"><Mail size={16} /> contacto@accesoit.com</li>
-                        <li className="flex items-center gap-2"><Phone size={16} /> +54 9 11 1234 5678</li>
+                        <li className="flex items-center gap-2"><Phone size={16} /> 2257 63 9463</li>
                         <li className="flex items-center gap-2"><MapPin size={16} /> Buenos Aires, Argentina</li>
                     </ul>
                 </div>

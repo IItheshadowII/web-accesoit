@@ -250,6 +250,17 @@ app.get('/api/dashboard', authenticateTokenWithDisabledCheck, async (req, res) =
     }
 });
 
+// Runtime configuration endpoint for the frontend (returns Google client id, etc.)
+app.get('/api/config', (req, res) => {
+    try {
+        const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || null;
+        return res.json({ googleClientId });
+    } catch (err) {
+        console.error('Error serving /api/config:', err);
+        return res.status(500).json({ error: 'Could not read config' });
+    }
+});
+
 // Contact Email Route
 app.post('/api/contact', async (req, res) => {
     const { name, company, email, message } = req.body;
