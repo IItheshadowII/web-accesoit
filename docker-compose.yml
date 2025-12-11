@@ -10,11 +10,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3002
-      - DATABASE_URL=file:./dev.db
+        - DATABASE_URL=${DATABASE_URL}
     env_file:
       - ./server/.env
     volumes:
-      - ./server/prisma:/app/server/prisma
       - web-data:/app/server/prisma
     networks:
       - web-network
