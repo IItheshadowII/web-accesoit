@@ -41,3 +41,8 @@ server/gen-lang-client-*.json
 
 # SQLite dev database (no versionar)
 server/prisma/dev.db
+server/prisma/dev.db-*
+server/migrations_sqlite_backup_*.zip
+
+# Prisma migrations (usamos db push, no migrations)
+server/prisma/migrations/

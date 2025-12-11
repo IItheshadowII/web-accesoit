@@ -7,3 +7,6 @@ node_modules
 # Ignore service account and local credentials
 google_service_account.json
 gen-lang-client-*.json
+
+# Prisma migrations (usamos db push, no migrations)
+prisma/migrations/
