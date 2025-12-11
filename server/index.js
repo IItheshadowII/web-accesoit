@@ -6,19 +6,42 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleAuth } = require('google-auth-library');
 const fs = require('fs');
+const os = require('os');
 const aiPromptPath = path.join(__dirname, 'ai_prompt.json');
 require('dotenv').config();
 
+// If a service account JSON is provided via env (e.g. CI secret), write it to disk
+// and set GOOGLE_APPLICATION_CREDENTIALS so Google SDKs use ADC.
+try {
+    const saRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    const saB64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
+    if (saRaw || saB64) {
+        // Write credentials to a temp directory (avoid writing inside the project folder
+        // to prevent nodemon from restarting when the file changes).
+        const saPathEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(os.tmpdir(), 'google_service_account.json');
+        try {
+            let content = saRaw;
+            if (!content && saB64) {
+                // decode base64
+                content = Buffer.from(saB64, 'base64').toString('utf8');
+            }
+            fs.writeFileSync(saPathEnv, content, 'utf8');
+            process.env.GOOGLE_APPLICATION_CREDENTIALS = saPathEnv;
+            console.log('Wrote service account JSON to', saPathEnv);
+        } catch (werr) {
+            console.warn('Could not write service account JSON to disk:', werr && werr.message);
+        }
+    }
+} catch (e) {
+    console.warn('Error processing GOOGLE_SERVICE_ACCOUNT_JSON:', e && e.message);
+}
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3002;
 const JWT_SECRET = 'super-secret-key-change-this';
-
-const openai = new OpenAI({
-    apiKey: process.env.AI_API_KEY,
-    baseURL: process.env.AI_BASE_URL || 'https://api.openai.com/v1', // Allows local LLM override
-});
 
 const AI_ENABLED = !!process.env.AI_API_KEY;
 
@@ -251,13 +274,18 @@ app.get('/api/dashboard', authenticateTokenWithDisabledCheck, async (req, res) =
 });
 
 // Runtime configuration endpoint for the frontend (returns Google client id, etc.)
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
     try {
         const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || null;
-        return res.json({ googleClientId });
-    } catch (err) {
-        console.error('Error serving /api/config:', err);
-        return res.status(500).json({ error: 'Could not read config' });
+        // Exponer el provider actual para que el frontend sepa qué prompt cargar
+        let provider = 'openai';
+        try {
+            const cfg = await prisma.config.findUnique({ where: { key: 'ai_provider_settings' } });
+            if (cfg?.value) provider = JSON.parse(cfg.value).provider || provider;
+        } catch {}
+        return res.json({ googleClientId, provider });
+    } catch (e) {
+        return res.json({ googleClientId: null, provider: 'openai' });
     }
 });
 
@@ -412,7 +440,80 @@ app.post('/api/chat', async (req, res) => {
     }
 
     try {
-        console.log('OpenAI: sending request with model', process.env.AI_MODEL || 'gpt-3.5-turbo');
+        // --- Dynamic AI Configuration ---
+        let providerSettings = {
+            provider: 'openai',
+            model: process.env.AI_MODEL || 'gpt-4o-mini',
+            apiKey: process.env.AI_API_KEY,
+            baseUrl: process.env.AI_BASE_URL || 'https://api.openai.com/v1'
+        };
+        
+        console.log('=== AI PROVIDER CONFIGURATION ===');
+        console.log('Default settings loaded from env');
+
+        try {
+            const config = await prisma.config.findUnique({
+                where: { key: 'ai_provider_settings' }
+            });
+            if (config && config.value) {
+                const dbSettings = JSON.parse(config.value);
+                console.log('Database settings found:', JSON.stringify({
+                    provider: dbSettings.provider,
+                    model: dbSettings.model,
+                    hasApiKey: !!dbSettings.apiKey,
+                    baseUrl: dbSettings.baseUrl
+                }, null, 2));
+                
+                // Ensure all required fields are present
+                if (dbSettings.provider && dbSettings.model && dbSettings.apiKey) {
+                    providerSettings = dbSettings;
+                    console.log('Using database settings');
+                } else {
+                    console.log('Database settings incomplete, using env fallback');
+                }
+            } else {
+                console.log('No database settings found, using env fallback');
+            }
+        } catch (e) {
+            console.warn('Could not load AI provider settings from DB, using fallback .env config.', e.message);
+        }
+
+        // Initialize AI client based on provider
+        let aiClient;
+        console.log('Final provider settings:', JSON.stringify({
+            provider: providerSettings.provider,
+            model: providerSettings.model,
+            hasApiKey: !!providerSettings.apiKey,
+            baseUrl: providerSettings.baseUrl
+        }, null, 2));
+        
+        if (providerSettings.provider === 'gemini') {
+            console.log('Initializing Gemini client with API key...');
+            
+            if (!providerSettings.apiKey) {
+                throw new Error('Gemini API key is required. Get one from Google AI Studio.');
+            }
+
+            // Simple client for REST API calls
+            aiClient = {
+                apiKey: providerSettings.apiKey,
+                baseUrl: providerSettings.baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
+                model: providerSettings.model || 'gemini-2.0-flash-lite'
+            };
+            console.log('Gemini client initialized with model:', aiClient.model);
+        } else {
+            console.log('Initializing OpenAI-compatible client...');
+            // OpenAI-compatible providers (openai, groq, custom)
+            aiClient = new OpenAI({
+                apiKey: providerSettings.apiKey,
+                baseURL: providerSettings.baseUrl || (providerSettings.provider === 'openai' ? 'https://api.openai.com/v1' : null),
+            });
+            console.log('OpenAI-compatible client initialized');
+        }
+        // --- End Dynamic AI Configuration ---
+        console.log('================================');
+
+        console.log('AI: sending request with provider', providerSettings.provider, 'and model', providerSettings.model);
 
         // Load system prompt from database (editable via admin endpoint)
         let systemPrompt = null;
@@ -447,77 +548,209 @@ MANEJO DE OBJECIONES:
 - Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."
 
 AGENDAMIENTO (PRIORIDAD MÁXIMA):
+- PRECAUCIÓN: Al extraer datos de contacto como emails, revisa la ortografía dos veces para evitar errores. Por ejemplo, si un usuario escribe "castelelite18@gmail.com", asegúrate de no escribir "castelelelite18@gmail.com".
 - Agenda INMEDIATAMENTE si tienes fecha y hora.
 - Si falta el nombre o email, pídelo amablemente.
 - Asume "Consulta de Automatización" como servicio.
 - Usa la fecha de mañana si dicen "mañana".`;
 
-        const completion = await openai.chat.completions.create({
-            model: process.env.AI_MODEL || 'gpt-3.5-turbo',
-            messages: [
-                {
-                    role: 'system',
-                    content: systemContent,
-                },
-                ...(history || []),
-                { role: 'user', content: message }
-            ],
-            functions: [
-                {
-                    name: 'schedule_appointment',
-                    description: 'Agenda una cita INMEDIATAMENTE cuando tengas fecha, hora y al menos un dato de contacto (email o teléfono). No esperes a tener todos los datos.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            name: { type: 'string', description: 'Nombre del cliente (usa "Cliente" si no lo proporciona)' },
-                            email: { type: 'string', description: 'Email del cliente (usa un placeholder si solo dio teléfono)' },
-                            phone: { type: 'string', description: 'Teléfono del cliente' },
-                            date: { type: 'string', description: 'Fecha en formato YYYY-MM-DD' },
-                            time: { type: 'string', description: 'Hora en formato HH:MM (24h)' },
-                            service: { type: 'string', description: 'Servicio de interés (usa "Consulta general" si no especifica)' },
-                            message: { type: 'string', description: 'Mensaje o notas adicionales' }
-                        },
-                        required: ['date', 'time']
+        // Define functions for function calling
+        const functions = [
+            {
+                name: 'schedule_appointment',
+                description: 'Agenda una cita INMEDIATAMENTE cuando tengas fecha, hora y al menos un dato de contacto (email o teléfono). No esperes a tener todos los datos.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        name: { type: 'string', description: 'Nombre del cliente (usa "Cliente" si no lo proporciona)' },
+                        email: { type: 'string', description: 'Email del cliente (usa un placeholder si solo dio teléfono)' },
+                        phone: { type: 'string', description: 'Teléfono del cliente' },
+                        date: { type: 'string', description: 'Fecha en formato YYYY-MM-DD' },
+                        time: { type: 'string', description: 'Hora en formato HH:MM (24h)' },
+                        service: { type: 'string', description: 'Servicio de interés (usa "Consulta general" si no especifica)' },
+                        message: { type: 'string', description: 'Mensaje o notas adicionales' }
+                    },
+                    required: ['date', 'time']
+                }
+            },
+            {
+                name: 'reschedule_appointment',
+                description: 'Reprograma la última cita agendada en esta conversación. El sistema automáticamente encuentra la cita por el sessionId. Solo necesitas proporcionar la nueva fecha y hora.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        newDate: { type: 'string', description: 'Nueva fecha en formato YYYY-MM-DD' },
+                        newTime: { type: 'string', description: 'Nueva hora en formato HH:MM (24h)' },
+                        reason: { type: 'string', description: 'Razón del cambio (opcional)' }
+                    },
+                    required: ['newDate', 'newTime']
+                }
+            },
+            {
+                name: 'update_client_data',
+                description: 'Actualiza o corrige los datos de contacto (email, teléfono, nombre) de la última cita agendada. Úsalo cuando el usuario diga que se equivocó en algún dato.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        email: { type: 'string', description: 'Nuevo email corregido' },
+                        phone: { type: 'string', description: 'Nuevo teléfono corregido' },
+                        name: { type: 'string', description: 'Nuevo nombre corregido' }
                     }
                 }
-                , {
-                    name: 'reschedule_appointment',
-                    description: 'Reprograma la última cita agendada en esta conversación. El sistema automáticamente encuentra la cita por el sessionId. Solo necesitas proporcionar la nueva fecha y hora.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            newDate: { type: 'string', description: 'Nueva fecha en formato YYYY-MM-DD' },
-                            newTime: { type: 'string', description: 'Nueva hora en formato HH:MM (24h)' },
-                            reason: { type: 'string', description: 'Razón del cambio (opcional)' }
-                        },
-                        required: ['newDate', 'newTime']
-                    }
-                },
+            }
+        ];
+
+        let completion;
+        let responseMessage;
+
+        if (providerSettings.provider === 'gemini') {
+            // Handle Gemini API with proper function calling
+            const geminiTools = [{
+                function_declarations: functions.map(func => ({
+                    name: func.name,
+                    description: func.description,
+                    parameters: func.parameters
+                }))
+            }];
+
+            // Extra instructions ONLY for Gemini so it actually uses tools
+            const geminiSystemContent = `${systemContent}
+
+INSTRUCCIONES PARA HERRAMIENTAS (MUY IMPORTANTE):
+- Tenés disponibles estas herramientas: schedule_appointment, reschedule_appointment, update_client_data.
+- Siempre que el usuario quiera AGENDAR, REPROGRAMAR o CORREGIR datos de una cita, NO respondas solo en texto.
+- En esos casos DEBES llamar explícitamente a la herramienta correspondiente usando functionCall en lugar de solo contestar en lenguaje natural.
+- No digas que agendaste o cambiaste nada si no llamaste a una herramienta.`;
+
+            // Build conversation history for Gemini
+            const geminiContents = [
                 {
-                    name: 'update_client_data',
-                    description: 'Actualiza o corrige los datos de contacto (email, teléfono, nombre) de la última cita agendada. Úsalo cuando el usuario diga que se equivocó en algún dato.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            email: { type: 'string', description: 'Nuevo email corregido' },
-                            phone: { type: 'string', description: 'Nuevo teléfono corregido' },
-                            name: { type: 'string', description: 'Nuevo nombre corregido' }
+                    role: 'user',
+                    parts: [{ text: geminiSystemContent }]
+                }
+            ];
+
+            // Add conversation history
+            if (history && history.length > 0) {
+                history.forEach(msg => {
+                    geminiContents.push({
+                        role: msg.role === 'assistant' ? 'model' : 'user',
+                        parts: [{ text: msg.content }]
+                    });
+                });
+            }
+
+            // Add current user message
+            geminiContents.push({
+                role: 'user',
+                parts: [{ text: message }]
+            });
+
+            try {
+                console.log('Sending to Gemini with tools:', geminiTools.length > 0 ? 'enabled' : 'disabled');
+                
+                // Call REST API with x-goog-api-key header (recommended by Google)
+                const endpoint = `${aiClient.baseUrl}/models/${aiClient.model}:generateContent`;
+                const payload = {
+                    contents: geminiContents,
+                    tools: geminiTools,
+                    tool_config: {
+                        function_calling_config: { mode: 'AUTO' }
+                    }
+                };
+
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': aiClient.apiKey
+                };
+
+                const resp = await fetch(endpoint, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(payload)
+                });
+
+                if (!resp.ok) {
+                    const errorText = await resp.text();
+                    throw new Error(`Gemini REST error ${resp.status}: ${errorText}`);
+                }
+
+                const response = await resp.json();
+                console.log('Gemini response candidates:', Array.isArray(response.candidates) ? response.candidates.length : 0);
+
+                // Check if Gemini made a function call
+                let functionCall = null;
+                if (response.candidates && response.candidates[0]?.content?.parts) {
+                    for (const part of response.candidates[0].content.parts) {
+                        if (part.functionCall) {
+                            console.log('Gemini function call detected:', part.functionCall.name);
+                            functionCall = {
+                                name: part.functionCall.name,
+                                arguments: JSON.stringify(part.functionCall.args)
+                            };
+                            break;
                         }
                     }
                 }
-            ],
-            function_call: 'auto'
-        });
 
-        console.log('OpenAI: response received');
-        // Log a summary to help debugging (avoid dumping secrets)
-        try {
-            console.log('OpenAI: choices length =', completion.choices ? completion.choices.length : 0);
-        } catch (logErr) {
-            console.warn('OpenAI: could not log completion summary', logErr);
+                // Get text response
+                let textResponse = '';
+                try {
+                    if (Array.isArray(response.candidates) && response.candidates[0]?.content?.parts) {
+                        const textPart = response.candidates[0].content.parts.find(p => p.text);
+                        textResponse = textPart?.text || '';
+                    }
+                } catch (e) {
+                    console.log('No text response from Gemini (likely due to function call)');
+                }
+
+                // Convert Gemini response to OpenAI format for compatibility
+                responseMessage = {
+                    content: textResponse,
+                    function_call: functionCall
+                };
+
+                console.log('Converted Gemini response - has function call:', !!functionCall);
+
+            } catch (geminiError) {
+                console.error('=== GEMINI SPECIFIC ERROR ===');
+                console.error('Gemini Error Type:', geminiError.constructor.name);
+                console.error('Gemini Error Message:', geminiError.message);
+                console.error('Gemini Error Details:', geminiError);
+                if (geminiError.response) {
+                    console.error('Gemini API Response:', geminiError.response);
+                }
+                console.error('============================');
+                throw geminiError;
+            }
+        } else {
+            // Handle OpenAI-compatible APIs
+            completion = await aiClient.chat.completions.create({
+                model: providerSettings.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: systemContent,
+                    },
+                    ...(history || []),
+                    { role: 'user', content: message }
+                ],
+                functions: functions,
+                function_call: 'auto'
+            });
+
+            responseMessage = completion.choices[0].message;
         }
 
-        const responseMessage = completion.choices[0].message;
+        console.log('AI: response received from', providerSettings.provider);
+        // Log a summary to help debugging (avoid dumping secrets)
+        try {
+            if (providerSettings.provider !== 'gemini') {
+                console.log('AI: choices length =', completion.choices ? completion.choices.length : 0);
+            }
+        } catch (logErr) {
+            console.warn('AI: could not log completion summary', logErr);
+        }
 
         // (doReschedule is defined at module level)
 
@@ -621,6 +854,39 @@ AGENDAMIENTO (PRIORIDAD MÁXIMA):
                 }
 
                 // 3. Si está libre, proceder a crear la cita
+                // Corrección de fecha: si el modelo devuelve una fecha en el pasado o el usuario dijo "mañana",
+                // ajustamos la fecha de forma segura para que el evento se cree visible y en el futuro.
+                const userText = (message || '').toString().toLowerCase();
+                let finalDate = functionArgs.date;
+                try {
+                    const now = new Date();
+                    const inPast = (d) => d.getTime() < new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                    if (userText.includes('mañana')) {
+                        const tomorrow = new Date(now);
+                        tomorrow.setDate(now.getDate() + 1);
+                        const y = tomorrow.getFullYear();
+                        const m = String(tomorrow.getMonth() + 1).padStart(2, '0');
+                        const dd = String(tomorrow.getDate()).padStart(2, '0');
+                        finalDate = `${y}-${m}-${dd}`;
+                        console.log('Fecha ajustada por "mañana":', finalDate);
+                    } else {
+                        const provided = new Date(`${functionArgs.date}T00:00:00`);
+                        if (inPast(provided)) {
+                            // Si la fecha está en el pasado, moverla al día siguiente de hoy
+                            const nextDay = new Date(now);
+                            nextDay.setDate(now.getDate() + 1);
+                            const y = nextDay.getFullYear();
+                            const m = String(nextDay.getMonth() + 1).padStart(2, '0');
+                            const dd = String(nextDay.getDate()).padStart(2, '0');
+                            finalDate = `${y}-${m}-${dd}`;
+                            console.log('Fecha ajustada por estar en pasado:', functionArgs.date, '->', finalDate);
+                        }
+                    }
+                } catch (dateErr) {
+                    console.warn('No se pudo ajustar fecha, usando la original:', dateErr && dateErr.message);
+                    finalDate = functionArgs.date;
+                }
+
                 // Valores por defecto inteligentes
                 const appointmentName = functionArgs.name || 'Cliente';
                 const appointmentEmail = functionArgs.email || (functionArgs.phone ? `${functionArgs.phone}@temp.accesoit.com` : 'sin-email@temp.accesoit.com');
@@ -632,7 +898,7 @@ AGENDAMIENTO (PRIORIDAD MÁXIMA):
                         email: appointmentEmail,
                         phone: functionArgs.phone || null,
                         sessionId: sessionId || null,
-                        date: functionArgs.date,
+                        date: finalDate,
                         time: functionArgs.time,
                         service: appointmentService,
                         message: functionArgs.message || null,
@@ -679,7 +945,7 @@ AGENDAMIENTO (PRIORIDAD MÁXIMA):
                                 gEventId = webhookResponse.eventId;
                             } else if (webhookResponse.id) {
                                 gEventId = webhookResponse.id;
-                            }
+                              }
 
                             if (gEventId) {
                                 await prisma.appointment.update({
@@ -701,7 +967,7 @@ AGENDAMIENTO (PRIORIDAD MÁXIMA):
                 }
 
                 // Construir mensaje de confirmación personalizado
-                let confirmationMessage = `¡Perfecto${appointmentName !== 'Cliente' ? ` ${appointmentName}` : ''}! Agendé tu cita para el ${functionArgs.date} a las ${functionArgs.time}.`;
+                let confirmationMessage = `¡Perfecto${appointmentName !== 'Cliente' ? ` ${appointmentName}` : ''}! Agendé tu cita para el ${finalDate} a las ${functionArgs.time}.`;
 
                 if (functionArgs.phone) {
                     confirmationMessage += ` Te contactaremos al ${functionArgs.phone}`;
@@ -795,8 +1061,39 @@ AGENDAMIENTO (PRIORIDAD MÁXIMA):
             res.json({ reply: responseMessage.content });
         }
     } catch (error) {
-        console.error('AI Error:', error);
-        res.status(500).json({ error: 'Failed to generate response' });
+        console.error('=== CHAT API ERROR ===');
+        console.error('Error Type:', error.constructor.name);
+        console.error('Error Message:', error.message);
+        if (typeof providerSettings !== 'undefined') {
+            console.error('Provider Settings:', JSON.stringify({
+                provider: providerSettings?.provider || 'undefined',
+                model: providerSettings?.model || 'undefined',
+                hasApiKey: !!providerSettings?.apiKey,
+                baseUrl: providerSettings?.baseUrl || 'undefined'
+            }, null, 2));
+        } else {
+            console.error('Provider Settings: undefined (not initialized)');
+        }
+        console.error('Stack Trace:', error.stack);
+        console.error('=====================');
+        
+        // More specific error messages based on error type
+        let errorMessage = 'Error interno del servidor';
+        
+        if (error.message?.includes('API key')) {
+            errorMessage = 'Error: API Key no válida o no configurada';
+        } else if (error.message?.includes('model')) {
+            errorMessage = 'Error: Modelo no válido o no disponible';
+        } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+            errorMessage = 'Error: No se pudo conectar con el proveedor de IA';
+        } else if (error.message?.includes('quota') || error.message?.includes('limit')) {
+            errorMessage = 'Error: Límite de cuota excedido en el proveedor de IA';
+        }
+        
+        res.status(500).json({ 
+            error: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
@@ -857,6 +1154,7 @@ MANEJO DE OBJECIONES:
 - Si preguntan precios: "Depende del alcance del proyecto, pero tenemos opciones a medida. Lo podemos revisar en una llamada de 10 minutos."
 
 AGENDAMIENTO (PRIORIDAD MÁXIMA):
+- PRECAUCIÓN: Al extraer datos de contacto como emails, revisa la ortografía dos veces para evitar errores. Por ejemplo, si un usuario escribe "castelelite18@gmail.com", asegúrate de no escribir "castelelelite18@gmail.com".
 - Agenda INMEDIATAMENTE si tienes fecha y hora.
 - Si falta el nombre o email, pídelo amablemente.
 - Asume "Consulta de Automatización" como servicio.
@@ -896,6 +1194,114 @@ app.post('/api/admin/ai-prompt', authenticateTokenWithDisabledCheck, async (req,
         return res.status(500).json({ error: 'Could not save AI prompt' });
     }
 });
+
+// Admin endpoints to get/update AI Provider Settings
+app.get('/api/admin/ai-provider', authenticateTokenWithDisabledCheck, async (req, res) => {
+    try {
+        const config = await prisma.config.findUnique({
+            where: { key: 'ai_provider_settings' }
+        });
+
+        if (config && config.value) {
+            const settings = JSON.parse(config.value);
+            // Never send the full API key to the client.
+            // Send only the last 4 chars for display purposes.
+            if (settings.apiKey) {
+                settings.apiKey = `...${settings.apiKey.slice(-4)}`;
+            }
+
+            return res.json(settings);
+        }
+
+        // Return default if not set, using environment variables as a fallback
+        return res.json({
+            provider: 'openai',
+            model: process.env.AI_MODEL || 'gpt-4o-mini',
+            apiKey: 'Not Set',
+            baseUrl: process.env.AI_BASE_URL || 'https://api.openai.com/v1'
+        });
+    } catch (err) {
+        console.error('Error reading AI provider settings:', err);
+        return res.status(500).json({ error: 'Could not read AI provider settings' });
+    }
+});
+
+app.post('/api/admin/ai-provider', authenticateTokenWithDisabledCheck, async (req, res) => {
+    try {
+        const existingConfig = await prisma.config.findUnique({ where: { key: 'ai_provider_settings' } });
+        let currentSettings = {};
+        if (existingConfig && existingConfig.value) {
+            currentSettings = JSON.parse(existingConfig.value);
+        }
+
+        const { provider, model, apiKey, baseUrl } = req.body;
+        if (!provider || !model) {
+            return res.status(400).json({ error: 'Provider and model are required' });
+        }
+
+        const newApiKey = (apiKey && !apiKey.startsWith('...')) ? apiKey : currentSettings.apiKey;
+        const newSettings = {
+            provider,
+            model,
+            apiKey: newApiKey,
+            baseUrl: baseUrl || ''
+        };
+
+        await prisma.config.upsert({
+            where: { key: 'ai_provider_settings' },
+            update: { value: JSON.stringify(newSettings) },
+            create: {
+                key: 'ai_provider_settings',
+                value: JSON.stringify(newSettings)
+            }
+        });
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error('Error saving AI provider settings:', err);
+        return res.status(500).json({ error: 'Could not save AI provider settings' });
+    }
+});
+
+// List available AI models for the current provider (Gemini via OAuth)
+app.get('/api/admin/ai-provider/models', authenticateTokenWithDisabledCheck, async (req, res) => {
+    try {
+        // Load provider settings from DB
+        const config = await prisma.config.findUnique({ where: { key: 'ai_provider_settings' } });
+        const settings = config?.value ? JSON.parse(config.value) : null;
+        if (!settings) return res.status(400).json({ error: 'AI provider not configured' });
+
+        if (settings.provider !== 'gemini') {
+            return res.json({ provider: settings.provider, models: [] });
+        }
+
+        // List models via REST using API key with x-goog-api-key header
+        if (!settings.apiKey) {
+            return res.status(400).json({ error: 'Gemini API key is required' });
+        }
+
+        const baseUrl = settings.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+        const headers = {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': settings.apiKey
+        };
+        const url = `${baseUrl}/models`;
+
+        const listResp = await fetch(url, { method: 'GET', headers });
+        if (!listResp.ok) {
+            const errText = await listResp.text();
+            return res.status(500).json({ error: `List models failed ${listResp.status}`, details: errText });
+        }
+        const json = await listResp.json();
+        const models = (json.models || [])
+            .map(m => (m.name || '').replace(/^models\//, ''))
+            .filter(Boolean);
+        return res.json({ provider: 'gemini', models });
+    } catch (err) {
+        console.error('Error listing AI models:', err);
+        return res.status(500).json({ error: 'Could not list models' });
+    }
+});
+
 
 // Admin endpoints for user management (admin only)
 app.get('/api/admin/users', authenticateTokenWithDisabledCheck, async (req, res) => {

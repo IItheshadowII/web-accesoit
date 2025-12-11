@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Server, Activity, LogOut, User, Calendar, Workflow, Plus } from 'lucide-react';
+import { Server, Activity, LogOut, User, Calendar, Workflow, Plus, Cpu, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../components/UI/Card';
 import Button from '../components/UI/Button';
 import AppointmentsManager from '../components/Admin/AppointmentsManager';
 import AdminAiPrompt from '../components/Admin/AdminAiPrompt';
+import AdminAiProvider from '../components/Admin/AdminAiProvider';
 import UserManagement from '../components/Admin/UserManagement';
 import UserProfile from '../components/User/UserProfile';
 import TicketSystem from '../components/User/TicketSystem';
@@ -170,10 +171,28 @@ const Dashboard = () => {
                                     }`}
                             >
                                 <div className="flex items-center gap-2">
-                                    <Workflow size={18} />
+                                    <MessageSquare size={18} />
                                     <span>AI Prompt</span>
                                 </div>
                                 {activeTab === 'ai' && (
+                                    <motion.div
+                                        layoutId="activeTab"
+                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400"
+                                    />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('ai-provider')}
+                                className={`px-4 py-2 font-medium transition-colors relative ${activeTab === 'ai-provider'
+                                    ? 'text-blue-400'
+                                    : 'text-gray-400 hover:text-white'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Cpu size={18} />
+                                    <span>Proveedor de IA</span>
+                                </div>
+                                {activeTab === 'ai-provider' && (
                                     <motion.div
                                         layoutId="activeTab"
                                         className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400"
@@ -286,6 +305,12 @@ const Dashboard = () => {
                             <>
                                 <h2 className="text-2xl font-bold mb-6">Prompt del Asistente</h2>
                                 <AdminAiPrompt />
+                            </>
+                        )}
+                        {activeTab === 'ai-provider' && (
+                            <>
+                                <h2 className="text-2xl font-bold mb-6">Configuración del Proveedor de IA</h2>
+                                <AdminAiProvider />
                             </>
                         )}
                     </>

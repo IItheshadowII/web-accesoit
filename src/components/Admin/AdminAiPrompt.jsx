@@ -6,6 +6,7 @@ import apiFetch from '../../lib/api';
 const AdminAiPrompt = () => {
   // Force redeploy - dark textarea editor with restore button
   const [prompt, setPrompt] = useState('');
+  const [provider, setProvider] = useState('openai');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -15,7 +16,15 @@ const AdminAiPrompt = () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await apiFetch('/api/admin/ai-prompt', { headers: { Authorization: `Bearer ${token}` } });
+        // Obtener provider actual
+        const cfgRes = await apiFetch('/api/config');
+        let currentProvider = 'openai';
+        if (cfgRes.ok) {
+          const c = await cfgRes.json();
+          currentProvider = c.provider || 'openai';
+          setProvider(currentProvider);
+        }
+        const res = await apiFetch(`/api/admin/ai-prompt?provider=${currentProvider}`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
           const json = await res.json();
           setPrompt(json.system || '');
@@ -41,7 +50,7 @@ const AdminAiPrompt = () => {
       const res = await apiFetch('/api/admin/ai-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ system: prompt })
+        body: JSON.stringify({ system: prompt, provider })
       });
       if (res.ok) {
         setMessage('Guardado correctamente');
@@ -65,6 +74,7 @@ const AdminAiPrompt = () => {
     <Card className="p-6">
       <h2 className="text-xl font-bold mb-4">Prompt del Asistente (IA)</h2>
       <p className="text-sm text-gray-400 mb-4">Editá el prompt del asistente. Esto cambia el comportamiento del chat.</p>
+      <p className="text-xs text-gray-400 mb-2">Proveedor activo: {provider}</p>
       
       {/* Container with guaranteed dark background */}
       <div 
