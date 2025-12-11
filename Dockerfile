@@ -53,10 +53,12 @@ COPY --from=frontend-builder /app/dist ./public
 RUN npx prisma generate
 
 # Crear script de inicio que ejecute migraciones antes de arrancar
+ENV PRISMA_SCHEMA=/app/server/prisma/schema.prisma
+
 RUN echo '#!/bin/bash\n\
 set -e\n\
 echo "🔄 Syncing Prisma schema to database (db push)..."\n\
-npx prisma db push\n\
+npx prisma db push --schema "$PRISMA_SCHEMA"\n\
 echo "🌱 Running seed (if needed)..."\n\
 npx prisma db seed || echo "Seed skipped"\n\
 echo "✅ Starting server..."\n\
