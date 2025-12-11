@@ -49,8 +49,9 @@ COPY server/ ./
 # Copiamos el build del frontend al backend para servirlo como estático
 COPY --from=frontend-builder /app/dist ./public
 
-# Generar Prisma Client en la imagen
-RUN npx prisma generate
+# Generar Prisma Client en la imagen (forzando schema correcto)
+ENV PRISMA_SCHEMA=/app/server/prisma/schema.prisma
+RUN npx prisma generate --schema "$PRISMA_SCHEMA"
 
 # Crear script de inicio que ejecute migraciones antes de arrancar
 ENV PRISMA_SCHEMA=/app/server/prisma/schema.prisma
