@@ -38,3 +38,6 @@ _staging_zip/
 # Server secrets (defensa en profundidad)
 server/google_service_account.json
 server/gen-lang-client-*.json
+
+# SQLite dev database (no versionar)
+server/prisma/dev.db
