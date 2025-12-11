@@ -55,8 +55,8 @@ RUN npx prisma generate
 # Crear script de inicio que ejecute migraciones antes de arrancar
 RUN echo '#!/bin/bash\n\
 set -e\n\
-echo "🔄 Running database migrations..."\n\
-npx prisma migrate deploy\n\
+echo "🔄 Syncing Prisma schema to database (db push)..."\n\
+npx prisma db push\n\
 echo "🌱 Running seed (if needed)..."\n\
 npx prisma db seed || echo "Seed skipped"\n\
 echo "✅ Starting server..."\n\

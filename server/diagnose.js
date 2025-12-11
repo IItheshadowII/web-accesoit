@@ -99,7 +99,8 @@ async function diagnose() {
         // 7. Verificar tablas
         console.log('\n\n7️⃣  Verificando estructura de tablas...');
         const tables = await prisma.$queryRaw`
-            SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;
+            -- For Postgres, update diagnostic queries accordingly (placeholder)
+            SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema');
         `;
         console.log('✅ Tablas en la base de datos:');
         tables.forEach(table => {
